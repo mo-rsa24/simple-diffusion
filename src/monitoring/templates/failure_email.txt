@@ -1,0 +1,12 @@
+Training run ID: {{run_id}}
+Status: FAILED
+Reason: {{reason}}
+Epoch: {{epoch}}
+Last checkpoint: {{checkpoint_path}}
+
+To resume:
+1. Load the last saved checkpoint
+2. Run: python train.py --resume {{checkpoint_path}}
+
+Logs: {{log_path}}
+TensorBoard: tensorboard --logdir {{tensorboard_path}}

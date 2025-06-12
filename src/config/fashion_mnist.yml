@@ -1,0 +1,64 @@
+# config/fashion_mnist.yaml
+experiment_id: '1'
+run_id: '2'
+
+dataset:
+  data_dir: ./data/fashion_mnist
+  batch_size: 128
+  num_workers: 4
+  image_size: 28
+  pin_memory: true
+  channels: 1
+
+model:
+  type: unet
+  params:
+    dim: 28
+    channels: 1
+    dim_mults: [1, 2, 4]
+
+optimizer:
+  type: "Adam"
+  params:
+    lr: !!float "1e-3"
+    betas:      [0.9, 0.999]
+    weight_decay: 0.0
+
+diffusion:
+  timesteps: 300
+  loss_type: "huber"
+  beta_start: 0.0001
+  beta_end: 0.02
+
+training:
+  epochs: 50
+  log_every_step: 100
+  log_every_epoch: 10
+
+dirs:
+  ckpt_dir: "./checkpoints"
+  logs_dir: "./logs"
+  results_dir:
+    base: "./results"
+    samples: "./samples"
+    side_by_side: "./side_by_side"
+    feature_maps: "./feature_maps"
+    tsne: "./tsne"
+  tensorboard_dir: "./tensorboard"
+  wandb_dir: "./wandb"
+
+logging:
+  use_tensorboard: false
+  use_wandb: false
+
+sampling:
+  batch_size: 16
+  channels: 3
+  blit: true
+  repeat_delay: 1000
+
+observability:
+  feature_maps: false
+  batch_grid: true
+  sample_table: true
+  diffusion_process: true
