@@ -72,3 +72,16 @@ def p_sample_loop(model, shape, timesteps=300):
 @torch.no_grad()
 def sample(model, image_size, batch_size=16, channels=3, timesteps=300):
     return p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
+
+
+@torch.no_grad()
+def generate_batch(model,
+                   image_size: int,
+                   batch_size: int = 16,
+                   channels: int = 1,
+                   timesteps: int = 300,
+                   device: torch.device = None) -> torch.Tensor:
+    device = device or next(model.parameters()).device
+    imgs = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
+    final_np = imgs[-1]  # shape (batch_size, C, H, W)
+    return torch.from_numpy(final_np).to(device)
