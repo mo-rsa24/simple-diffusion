@@ -21,12 +21,15 @@ class Unet(nn.Module):
         channels=3,
         self_condition=False,
         resnet_block_groups=4,
+        use_attention_at=()
     ):
         super().__init__()
 
         # determine dimensions
         self.channels = channels
         self.self_condition = self_condition
+        self.use_attention_at = set(use_attention_at)
+
         input_channels = channels * (2 if self_condition else 1)
 
         init_dim = default(init_dim, dim)
@@ -60,7 +63,7 @@ class Unet(nn.Module):
                     [
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                        Residual(PreNorm(dim_in, Attention(dim_in))) if ind in self.use_attention_at else Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                         Downsample(dim_in, dim_out)
                         if not is_last
                         else nn.Conv2d(dim_in, dim_out, 3, padding=1),
@@ -81,7 +84,8 @@ class Unet(nn.Module):
                     [
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                        Residual(PreNorm(dim_out, Attention(dim_out))) if (num_resolutions - 1 - ind) in self.use_attention_at
+                        else Residual(PreNorm(dim_out, LinearAttention(dim_out))),
                         Upsample(dim_out, dim_in)
                         if not is_last
                         else nn.Conv2d(dim_out, dim_in, 3, padding=1),

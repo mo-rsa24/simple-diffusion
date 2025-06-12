@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import torch
 import wandb
 import yaml
 from tensorboard.plugin_util import experiment_id
@@ -15,6 +16,7 @@ def load_config(path: str) -> Config:
     return Config(
         experiment_id = data["experiment_id"],
         run_id        = data["run_id"],
+        seed          = data["seed"],
         training      = TrainingConfig(**data["training"]),
         dirs          = DirsConfig(**data["dirs"]),
         logging       = LoggingConfig(**data["logging"]),
@@ -62,7 +64,7 @@ def build_dirs(cfg: Config) -> dict:
 
     return paths
 
-def init_observers(cfg: Config, dirs: dict):
+def init_observers(cfg: Config, dirs: dict, task: str = "TB"):
     logger = init_logger(str(dirs["logs"]), log_to_stdout=True)
     writer = None
     if cfg.logging.use_tensorboard:
@@ -71,8 +73,9 @@ def init_observers(cfg: Config, dirs: dict):
     wandb_tracker = None
     if cfg.logging.use_wandb:
         wandb_tracker = wandb.init(
-            project=cfg.experiment_id,
-            name=cfg.run_id,
+            project=f"chest-xray-{task}",
+            name=f"experiment_{cfg.experiment_id}_run_{cfg.run_id}",
             config=cfg.__dict__
         )
+        wandb.run.notes = f"CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0)}"
     return logger, writer, wandb_tracker

@@ -32,6 +32,7 @@ class DiffusionConfig:
     timesteps: int
     loss_type: str
     beta_start: float
+    ema_decay: float
     beta_end: float
 
 @dataclass
@@ -52,11 +53,16 @@ class DatasetConfig:
     image_size: int
     pin_memory: bool
     channels: int
+    augmentation: str
+    normalization: str
+    resize_strategy: str
+    hist_eq: bool
 
 @dataclass
 class Config:
     experiment_id: str
     run_id: str
+    seed: int
     training: TrainingConfig
     logging: LoggingConfig
     dirs: DirsConfig
