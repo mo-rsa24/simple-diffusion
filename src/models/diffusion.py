@@ -61,12 +61,10 @@ def p_sample_loop(model, shape, timesteps=300):
     b = shape[0]
     # start from pure noise (for each example in the batch)
     img = torch.randn(shape, device=device)
-    imgs = []
 
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
         img = p_sample(model, img, torch.full((b,), i, device=device, dtype=torch.long), i, timesteps=timesteps)
-        imgs.append(img.cpu().numpy())
-    return imgs
+    return img
 
 
 @torch.no_grad()
@@ -82,6 +80,5 @@ def generate_batch(model,
                    timesteps: int = 300,
                    device: torch.device = None) -> torch.Tensor:
     device = device or next(model.parameters()).device
-    imgs = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
-    final_np = imgs[-1]  # shape (batch_size, C, H, W)
-    return torch.from_numpy(final_np).to(device)
+    final = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
+    return final.to(device)

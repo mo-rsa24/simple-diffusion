@@ -1,4 +1,4 @@
-# config/tb.yaml
+# config/pneumonia.yaml
 seed: 42
 
 dataset:
@@ -38,7 +38,7 @@ diffusion:
 training:
   epochs: 100
   log_every_step: 500 # 500
-  log_every_epoch: 20 # 20
+  log_every_epoch: 20 #20
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD/simple-diffusion"

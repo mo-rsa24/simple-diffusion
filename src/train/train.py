@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict
 
 import torch
-
+import torch.nn.functional as F
 from src.config.configs import Config
 from src.models.ema import EMA
 from src.models.unet import Unet
@@ -14,7 +14,10 @@ from src.utils.checkpoint_manager import CheckpointManager
 from datetime import timedelta
 import time
 from torch.optim import Adam
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
+
+from utils.calculations import q_sample
 
 def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     if cfg.optimizer.type.lower() == "adam":
@@ -22,7 +25,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
     else:
         raise ValueError(f"Unsupported optimizer: {cfg.optimizer.type}")
     scheduler = None  # add if needed
-
+    scaler = GradScaler()
     start_time = time.time()
     log_training_start(
         logger,
@@ -43,18 +46,35 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
 
         running_loss = 0.0
         for step, batch in enumerate(train_loader, 1):
-          optimizer.zero_grad()
-
           batch_size = batch['image'].shape[0]
           batch = batch['image'].to(device)
-
-          # Algorithm 1 line 3: sample t uniformally for every example in the batch
+          noise = torch.randn_like(batch)
           t = torch.randint(0, cfg.diffusion.timesteps, (batch_size,), device=device).long()
 
-          loss = p_losses(model, batch, t, loss_type=cfg.diffusion.loss_type, timesteps=cfg.diffusion.timesteps)
-          loss.backward()
-          optimizer.step()
+          optimizer.zero_grad()
+
+          x_noisy = q_sample(x_start=batch, t=t, noise=noise, timesteps=cfg.diffusion.timesteps)
+          with autocast():
+            pred_noise = model(x_noisy, t)
+
+          # 3) cast back to FP32 for loss
+          pred_noise = pred_noise.float()
+          if cfg.diffusion.loss_type == 'l1':
+            loss = F.l1_loss(noise, pred_noise)
+          elif cfg.diffusion.loss_type == 'l2':
+            loss = F.mse_loss(noise, pred_noise)
+          elif cfg.diffusion.loss_type == "huber":
+            loss = F.smooth_l1_loss(noise, pred_noise)
+
+          # backward with the scaler
+          scaler.scale(loss).backward()
+          scaler.step(optimizer)
+          scaler.update()
+
+          # optional: free any cached fragments
+
           ema.update()
+          torch.cuda.empty_cache()
 
           running_loss += loss.item()
           global_step += 1
@@ -68,9 +88,9 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         epoch_time = time.time() - epoch_start
         log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
         log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
-        real_batch = batch[:16].to(device)  # take first 16 real images
+        real_batch = batch[:cfg.dataset.batch_size].to(device)  # take first 16 real images
         ema.apply_shadow()
-        generated = generate_batch(model, image_size=cfg.dataset.image_size, batch_size=4, channels=cfg.dataset.channels,timesteps=cfg.diffusion.timesteps)
+        generated = generate_batch(model, image_size=cfg.dataset.image_size, batch_size=cfg.dataset.batch_size, channels=cfg.dataset.channels,timesteps=cfg.diffusion.timesteps)
         ema.restore()
         if epoch % cfg.training.log_every_epoch == 0:
             visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)

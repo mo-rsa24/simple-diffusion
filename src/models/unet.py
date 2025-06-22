@@ -9,7 +9,7 @@ from functools import partial
 import torch.nn.functional as F
 
 from src.models.normalization import PreNorm
-
+from torch.utils.checkpoint import checkpoint
 
 class Unet(nn.Module):
     def __init__(
@@ -33,7 +33,9 @@ class Unet(nn.Module):
         input_channels = channels * (2 if self_condition else 1)
 
         init_dim = default(init_dim, dim)
-        self.init_conv = nn.Conv2d(input_channels, init_dim, 1, padding=0) # changed to 1 and 0 from 7,3
+        # self.init_conv = nn.Conv2d(input_channels, init_dim, 1, padding=0) # changed to 1 and 0 from 7,3
+        self.init_conv = nn.Conv2d(input_channels, init_dim, 3, padding=1)
+
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
@@ -59,17 +61,13 @@ class Unet(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(
-                nn.ModuleList(
-                    [
-                        block_klass(dim_in, dim_in, time_emb_dim=time_dim),
-                        block_klass(dim_in, dim_in, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_in, Attention(dim_in))) if ind in self.use_attention_at else Residual(PreNorm(dim_in, LinearAttention(dim_in))),
-                        Downsample(dim_in, dim_out)
-                        if not is_last
-                        else nn.Conv2d(dim_in, dim_out, 3, padding=1),
-                    ]
+                    nn.ModuleList([
+                        block_klass(dim_in, dim_in, time_emb_dim=time_dim),  # Single ResNet block
+                        Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                        Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding=1),
+                    ])
                 )
-            )
+
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
@@ -80,18 +78,13 @@ class Unet(nn.Module):
             is_last = ind == (len(in_out) - 1)
 
             self.ups.append(
-                nn.ModuleList(
-                    [
-                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_out, Attention(dim_out))) if (num_resolutions - 1 - ind) in self.use_attention_at
-                        else Residual(PreNorm(dim_out, LinearAttention(dim_out))),
-                        Upsample(dim_out, dim_in)
-                        if not is_last
-                        else nn.Conv2d(dim_out, dim_in, 3, padding=1),
-                    ]
-                )
+                nn.ModuleList([
+                    block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),  # Single ResNet block
+                    Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                    Upsample(dim_out, dim_in) if not is_last else nn.Conv2d(dim_out, dim_in, 3, padding=1),
+                ])
             )
+
 
         self.out_dim = default(out_dim, channels)
 
@@ -110,33 +103,27 @@ class Unet(nn.Module):
 
         h = []
 
-        for block1, block2, attn, downsample in self.downs:
-            x = block1(x, t)
-            h.append(x)
-
-            x = block2(x, t)
-            x = attn(x)
-            h.append(x)
-
+        for block, attn, downsample in self.downs:
+            x = checkpoint(block, x, t)
+            h.append(x)              # <--- Store skip only here!
+            x = checkpoint(attn, x)
             x = downsample(x)
 
-        x = self.mid_block1(x, t)
-        x = self.mid_attn(x)
-        x = self.mid_block2(x, t)
 
-        for block1, block2, attn, upsample in self.ups:
-            x = torch.cat((x, h.pop()), dim=1)
-            x = block1(x, t)
+        x = checkpoint(self.mid_block1, x, t)
+        x = checkpoint(self.mid_attn, x)
+        x = checkpoint(self.mid_block2, x, t)
 
-            x = torch.cat((x, h.pop()), dim=1)
-            x = block2(x, t)
-            x = attn(x)
-
+        for block, attn, upsample in self.ups:
+            skip = h.pop()                # <--- Single pop per stage!
+            x = torch.cat((x, skip), dim=1)
+            x = checkpoint(block, x, t)
+            x = checkpoint(attn, x)
             x = upsample(x)
 
-        x = torch.cat((x, r), dim=1)
 
-        x = self.final_res_block(x, t)
+        x = torch.cat((x, r), dim=1)
+        x = checkpoint(self.final_res_block, x, t)
         return self.final_conv(x)
 
 
