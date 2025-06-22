@@ -4,7 +4,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from pathlib import Path
 
-from src.dataset.FashionMNIST import FashionMNISTDataset
+from src.dataset.MNISTDataset import MNISTDataset
 from src.models.diffusion import p_losses, sample
 from src.models.unet import Unet
 from src.utils.checkpoint import num_to_groups
@@ -27,8 +27,8 @@ num_workers  = 4
 pin_memory   = True  # set False if not using a GPU
 
 # instantiate datasets
-train_ds = FashionMNISTDataset(split="train")
-test_ds  = FashionMNISTDataset(split="test")
+train_ds = MNISTDataset(split="train")
+test_ds  = MNISTDataset(split="test")
 
 # create dataloaders
 train_loader = DataLoader(
