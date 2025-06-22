@@ -6,7 +6,7 @@ import yaml
 from tensorboard.plugin_util import experiment_id
 
 from src.config.configs import Config, TrainingConfig, LoggingConfig, ObservabilityConfig, DiffusionConfig, ModelConfig, \
-    OptimizerConfig, DatasetConfig, DirsConfig
+    OptimizerConfig, DatasetConfig, DirsConfig, SamplingConfig
 from src.utils.logger import init_logger
 from utils.env import is_cluster
 
@@ -25,7 +25,8 @@ def load_config(path: str, experiment_id: str, run_id:str) -> Config:
         diffusion     = DiffusionConfig(**data["diffusion"]),
         model         = ModelConfig(**data["model"]),
         optimizer     = OptimizerConfig(**data["optimizer"]),
-        dataset       = DatasetConfig(**data["dataset"])
+        dataset       = DatasetConfig(**data["dataset"]),
+        sampling      = SamplingConfig(**data["sampling"])
     )
 
 

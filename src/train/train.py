@@ -9,7 +9,8 @@ from src.models.unet import Unet
 from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.train.logging.training_logger_utils import log_training_start, log_epoch_start, log_batch, log_epoch_summary, \
     visualize_epoch, log_json, log_training_end
-from src.models.diffusion import p_losses, sample, generate_batch
+from src.models.diffusion import generate_batch
+from src.utils.calculations import q_sample
 from src.utils.checkpoint_manager import CheckpointManager
 from datetime import timedelta
 import time
@@ -17,7 +18,6 @@ from torch.optim import Adam
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 
-from utils.calculations import q_sample
 
 def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     if cfg.optimizer.type.lower() == "adam":
@@ -46,10 +46,9 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
 
         running_loss = 0.0
         for step, batch in enumerate(train_loader, 1):
-          batch_size = batch['image'].shape[0]
-          batch = batch['image'].to(device)
+          batch = batch.to(device)
           noise = torch.randn_like(batch)
-          t = torch.randint(0, cfg.diffusion.timesteps, (batch_size,), device=device).long()
+          t = torch.randint(0, cfg.diffusion.timesteps, (cfg.dataset.batch_size,), device=device).long()
 
           optimizer.zero_grad()
 
@@ -82,15 +81,15 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
           # ── Periodic Logging ────────────────────────────────
           if global_step % cfg.training.log_every_step == 0:
               log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer, wandb_tracker=wandb_run)
-              checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
+              # checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
 
         avg_loss = running_loss / len(train_loader)
         epoch_time = time.time() - epoch_start
         log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
         log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
-        real_batch = batch[:cfg.dataset.batch_size].to(device)  # take first 16 real images
+        real_batch = batch[:cfg.sampling.batch_size].to(device)  # take first 16 real images
         ema.apply_shadow()
-        generated = generate_batch(model, image_size=cfg.dataset.image_size, batch_size=cfg.dataset.batch_size, channels=cfg.dataset.channels,timesteps=cfg.diffusion.timesteps)
+        generated = generate_batch(model, image_size=cfg.dataset.image_size, batch_size=cfg.sampling.batch_size, channels=cfg.dataset.channels,timesteps=cfg.diffusion.timesteps)
         ema.restore()
         if epoch % cfg.training.log_every_epoch == 0:
             visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)

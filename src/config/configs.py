@@ -61,6 +61,13 @@ class DatasetConfig:
     hist_eq: bool
 
 @dataclass
+class SamplingConfig:
+    batch_size: int
+    channels: int
+    blit: bool
+    repeat_delay: float
+
+@dataclass
 class Config:
     experiment_id: str
     run_id: str
@@ -73,3 +80,4 @@ class Config:
     model: ModelConfig
     optimizer: OptimizerConfig
     dataset: DatasetConfig
+    sampling: SamplingConfig
