@@ -8,14 +8,15 @@ from tensorboard.plugin_util import experiment_id
 from src.config.configs import Config, TrainingConfig, LoggingConfig, ObservabilityConfig, DiffusionConfig, ModelConfig, \
     OptimizerConfig, DatasetConfig, DirsConfig
 from src.utils.logger import init_logger
+from utils.env import is_cluster
 
 
-def load_config(path: str) -> Config:
+def load_config(path: str, experiment_id: str, run_id:str) -> Config:
     with open(path) as f:
         data = yaml.safe_load(f)
     return Config(
-        experiment_id = data["experiment_id"],
-        run_id        = data["run_id"],
+        experiment_id = experiment_id,
+        run_id        = run_id,
         seed          = data["seed"],
         training      = TrainingConfig(**data["training"]),
         dirs          = DirsConfig(**data["dirs"]),
@@ -29,38 +30,35 @@ def load_config(path: str) -> Config:
 
 
 def build_dirs(cfg: Config) -> dict:
-    """
-    Create one subfolder per top‐level dir, then
-    create nested subdirs under results_dir['base'].
-    """
+    root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
+    experiment = f"experiment_{cfg.experiment_id}"
+    run = f"run_{cfg.run_id}"
+    
     paths = {}
 
-    # 1) simple roots
-    for key, root in [
-        ("ckpt",    cfg.dirs.ckpt_dir),
-        ("logs",    cfg.dirs.logs_dir),
-        ("tb",      cfg.dirs.tensorboard_dir),
-        ("wandb",   cfg.dirs.wandb_dir),
+    # 1) Root-level folders
+    for key, attr in [
+        ("ckpt", cfg.dirs.ckpt_dir),
+        ("logs", cfg.dirs.logs_dir),
+        ("tb", cfg.dirs.tensorboard_dir),
+        ("wandb", cfg.dirs.wandb_dir),
     ]:
-        experiment = f"experiment_{cfg.experiment_id}"; run = f"run_{cfg.run_id}"
-        p = Path(root) / Path(experiment) / Path(run)
-        p.mkdir(parents=True, exist_ok=True)
-        paths[key] = p
+        abs_path = root_base / Path(attr) / experiment / run
+        abs_path.mkdir(parents=True, exist_ok=True)
+        paths[key] = abs_path
 
-    # 2) results_dir with nesting
-    rd = cfg.dirs.results_dir
-    base = Path(rd["base"]) / Path(experiment) / Path(run)
-    base.mkdir(parents=True, exist_ok=True)
-    paths["results_base"] = base
+    # 2) Results subfolders
+    results_cfg = cfg.dirs.results_dir
+    results_base = root_base / Path(results_cfg["base"]) / experiment / run
+    results_base.mkdir(parents=True, exist_ok=True)
+    paths["results_base"] = results_base
 
-    # create each subfolder under the 'base' path
-    for name, rel in rd.items():
+    for name, rel_path in results_cfg.items():
         if name == "base":
             continue
-        # use the name of the rel-path as the folder name
-        sub = base / Path(rel).name
-        sub.mkdir(parents=True, exist_ok=True)
-        paths[f"results_{name}"] = sub
+        full_path = results_base / Path(rel_path).name
+        full_path.mkdir(parents=True, exist_ok=True)
+        paths[f"results_{name}"] = full_path
 
     return paths
 

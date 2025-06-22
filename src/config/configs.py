@@ -9,6 +9,8 @@ class TrainingConfig:
 
 @dataclass
 class DirsConfig:
+    cluster_base: str
+    local_base: str
     ckpt_dir: str
     logs_dir: str
     results_dir:   Dict[str, str]
