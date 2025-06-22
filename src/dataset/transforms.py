@@ -25,7 +25,13 @@ def get_albu_normalize(normalization):
     else:
         return A.NoOp()
 
-
+def mnist_transform(image_size=28):
+    return T.Compose([
+        T.Resize((image_size, image_size)),
+        T.ToTensor(),
+        # Map [0,1] to [-1,1] as required by most diffusion models
+        T.Lambda(lambda x: x * 2. - 1.)
+    ])
 def resize_with_strategy(size=256, strategy="center_crop"):
     if strategy == "pad":
         return T.Compose([

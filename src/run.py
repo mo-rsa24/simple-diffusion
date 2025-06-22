@@ -3,6 +3,7 @@ import argparse
 import torch
 
 from src.dataset.ChestXRay import get_xray_loaders
+from src.dataset.MNIST import get_mnist_loaders
 from src.models.ema import EMA
 from src.models.unet import Unet
 from src.monitoring.alert_notifier import send_failure_email
@@ -18,7 +19,7 @@ def parse_args():
     p.add_argument("--run_id", "-r", type=str, required=True)
     p.add_argument(
         "--dataset", "-d",
-        choices=["TB", "PNEUMONIA"],
+        choices=["TB", "PNEUMONIA", "MNIST"],
         required=True,
         help="Which dataset/config to use"
     )
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     logger, writer, wandb_run = init_observers(cfg, dirs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_loader, val_loader = get_xray_loaders(cfg)
+    train_loader, val_loader = get_mnist_loaders(cfg)
     model = Unet(**cfg.model.params).to(device)
     ema = EMA(model, decay=cfg.diffusion.ema_decay)
 
