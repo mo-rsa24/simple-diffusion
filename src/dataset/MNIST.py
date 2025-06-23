@@ -32,7 +32,7 @@ class MNISTDataset(Dataset):
         img, _ = self.dataset[idx]  # Ignore label, use only image
         return img
 
-def get_mnist_loaders(cfg: Config, task: str = "TB"):
+def get_mnist_loaders(cfg: Config):
     transform = mnist_transform(cfg.dataset.image_size)
     dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="train", transform=transform)
     val_dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="val", transform=transform)

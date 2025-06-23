@@ -36,9 +36,9 @@ diffusion:
   beta_end: 0.02
 
 training:
-  epochs: 20
-  log_every_step: 500 # 500
-  log_every_epoch: 5 # 20
+  epochs: 100
+  log_every_step: 1000 # 500
+  log_every_epoch: 20 # 20
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD/simple-diffusion"
