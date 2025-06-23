@@ -46,9 +46,10 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
 
         running_loss = 0.0
         for step, batch in enumerate(train_loader, 1):
+          batch_size = int(batch.shape[0])
           batch = batch.to(device)
           noise = torch.randn_like(batch)
-          t = torch.randint(0, cfg.diffusion.timesteps, (cfg.dataset.batch_size,), device=device).long()
+          t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
 
           optimizer.zero_grad()
 
@@ -81,7 +82,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
           # ── Periodic Logging ────────────────────────────────
           if global_step % cfg.training.log_every_step == 0:
               log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer, wandb_tracker=wandb_run)
-              # checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
+              checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
 
         avg_loss = running_loss / len(train_loader)
         epoch_time = time.time() - epoch_start
