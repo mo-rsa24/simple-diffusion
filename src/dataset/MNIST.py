@@ -29,13 +29,15 @@ class MNISTDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        img, _ = self.dataset[idx]  # Ignore label, use only image
-        return img
+        img, targets = self.dataset[idx]  # Ignore label, use only image
+        return img, targets
 
 def get_mnist_loaders(cfg: Config):
     transform = mnist_transform(cfg.dataset.image_size)
     dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="train", transform=transform)
     val_dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="val", transform=transform)
+    test_dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="test", transform=transform)
     train_loader = DataLoader(dataset, batch_size=cfg.dataset.batch_size, shuffle=True, num_workers=cfg.dataset.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=cfg.dataset.batch_size, shuffle=False, num_workers=cfg.dataset.num_workers)
-    return train_loader, val_loader
+    test_loader = DataLoader(test_dataset, batch_size=cfg.dataset.batch_size, shuffle=False, num_workers=cfg.dataset.num_workers)
+    return train_loader, val_loader, test_loader

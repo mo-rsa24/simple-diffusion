@@ -32,6 +32,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         model_name=cfg.model.type,
         experiment_id=cfg.experiment_id,
         run_id=cfg.run_id,
+        task=cfg.task,
         total_epochs=cfg.training.epochs,
         total_batches=len(train_loader)
     )
@@ -45,7 +46,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         log_epoch_start(epoch - 1, logger)
 
         running_loss = 0.0
-        for step, batch in enumerate(train_loader, 1):
+        for step, (batch, _) in enumerate(train_loader, 1):
           batch_size = int(batch.shape[0])
           batch = batch.to(device)
           noise = torch.randn_like(batch)

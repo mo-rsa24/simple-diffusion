@@ -1,0 +1,38 @@
+    try:
+        if args.dataset == "MNIST":
+            train_loader, val_loader, test_loader = get_mnist_loaders(cfg)
+            if args.task == "classify":
+                batch_size = 64
+                num_epochs = 5
+                model = BaseClassifier().to(device)
+                train_mnist(cfg, dirs, model, train_loader, val_loader, device, logger, epochs=epochs, eval_interval=1)
+                test_mnist(model, test_loader)
+            if args.task == "generate":
+                train_loader, val_loader, test_loaders = get_mnist_loaders(cfg)
+                model = Unet(**cfg.model.params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                train(cfg, dirs, model, ema, train_loader, logger, device, writer = writer, wandb_run = wandb_run)
+        if args.dataset == "MNIST_COLOR":
+            ds: Dict = get_separate_loader()
+            train_loader, val_loader, test_loader = ds.get(args.color)
+            if args.task == "classify":
+                epochs = 5
+                eval_interval = 1
+                model = DigitColorClassifier().to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+                train_mnist(cfg, dirs, model, train_loader, val_loader, device, logger, epochs=epochs, eval_interval=1)
+                test_mnist(model, test_loader)
+            if args.task == "generate":
+                pass
+        if args.dataset == "MNIST_BBOX":
+            ds: Dict = get_separate_loader(dataset=args.dataset)
+            train_loader, val_loader, test_loader = ds.get(args.color)
+            if args.task == "classify":
+                epochs = 5
+                eval_interval = 1
+                model = DigitColorBBoxClassifier().to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+                train_mnist(cfg, dirs, model, train_loader, val_loader, device, logger, epochs=epochs, eval_interval=1)
+                test_mnist(model, test_loader)
+            if args.task == "generate":
+                pass

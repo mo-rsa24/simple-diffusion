@@ -1,22 +1,20 @@
 from pathlib import Path
-
 import torch
 import wandb
 import yaml
-from tensorboard.plugin_util import experiment_id
-
 from src.config.configs import Config, TrainingConfig, LoggingConfig, ObservabilityConfig, DiffusionConfig, ModelConfig, \
     OptimizerConfig, DatasetConfig, DirsConfig, SamplingConfig
+from src.utils.env import is_cluster
 from src.utils.logger import init_logger
-from utils.env import is_cluster
 
 
-def load_config(path: str, experiment_id: str, run_id:str) -> Config:
+def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate") -> Config:
     with open(path) as f:
         data = yaml.safe_load(f)
     return Config(
         experiment_id = experiment_id,
         run_id        = run_id,
+        task          = task,
         seed          = data["seed"],
         training      = TrainingConfig(**data["training"]),
         dirs          = DirsConfig(**data["dirs"]),
@@ -32,7 +30,7 @@ def load_config(path: str, experiment_id: str, run_id:str) -> Config:
 
 def build_dirs(cfg: Config) -> dict:
     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
-    experiment = f"experiment_{cfg.experiment_id}"
+    experiment = f"experiment_{cfg.experiment_id}_{cfg.task}"
     run = f"run_{cfg.run_id}"
     
     paths = {}
