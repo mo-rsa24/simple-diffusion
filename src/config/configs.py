@@ -71,6 +71,7 @@ class SamplingConfig:
 class Config:
     experiment_id: str
     run_id: str
+    task: str
     seed: int
     training: TrainingConfig
     logging: LoggingConfig

@@ -12,12 +12,14 @@ from ...config.configs import Config
 from ...utils.visualization import save_side_by_side_images
 
 
-def log_training_start(logger, model_name, experiment_id, run_id, total_epochs, total_batches):
+def log_training_start(logger, model_name, experiment_id, run_id, task, total_epochs, total_batches):
     logger.info(
         f"🚀 Training started\n"
         f"🔧 Model: {model_name}\n"
         f"🧪 Experiment: {experiment_id}\n"
         f"🏃‍♂️ Run ID: {run_id}\n"
+        f"🤞🏽 Task: {task}\n"
+        f"🖋️ Experiment Name: experiment_{experiment_id}_{task}\n"
         f"⏳ Total Epochs: {total_epochs}, Batches/Epoch: {total_batches}"
     )
 
