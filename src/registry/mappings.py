@@ -1,6 +1,7 @@
 # mappings.py (new file or at top of run.py)
-from src.dataset.utils import get_mnist_loaders, get_separate_loader
-from src.models.classifier.base_classifier import BaseClassifier
+from src.dataset.MNIST import get_mnist_loaders
+from src.dataset.utils import get_separate_loader
+from src.models.classifier.digit_classifier import DigitClassifier
 from src.models.classifier.digit_color_bbox_classifier import DigitColorBBoxClassifier
 from src.models.classifier.digit_color_classifier import DigitColorClassifier
 
@@ -31,12 +32,13 @@ BBOX_COLOR_MAP = {
 }
 
 MODEL_REGISTRY = {
-    "MNIST": BaseClassifier,
+    "MNIST": DigitClassifier,
     "MNIST_COLOR": DigitColorClassifier,
     "MNIST_BBOX": DigitColorBBoxClassifier,
 }
+
 DATASET_LOADERS = {
-    "MNIST": get_mnist_loaders,
-    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(),
-    "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(dataset="MNIST_BBOX"),
+    "MNIST": lambda cfg, number=None: get_mnist_loaders(cfg, number=number),
+    "MNIST_COLOR": lambda cfg, number=None, task="classify", batch_size=8: get_separate_loader(number=number, batch_size=batch_size, task=task),
+    "MNIST_BBOX": lambda cfg, number=None, task="classify", batch_size=8: get_separate_loader(dataset="MNIST_BBOX", number=number, batch_size=batch_size, task=task),
 }

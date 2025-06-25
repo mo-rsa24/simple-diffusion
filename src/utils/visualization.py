@@ -155,7 +155,7 @@ def visualize_predictions(model, dirs: dict, loader, device, epoch: int = None, 
             label_type = logit_key.replace("_logits", "")
             gt_key = f"{label_type}_label"
             if gt_key in batch_labels:
-                title.append(f"{label_type[:1].upper()}: {pred[i]} (GT:{batch_labels[gt_key][i].item()})")
+                title.append(f"{label_type[:1].upper()}_pred: {pred[i]} (GT:{batch_labels[gt_key][i].item()})")
         axes[i].set_title("\n".join(title), fontsize=8)
         axes[i].axis("off")
     for i in range(n, len(axes)):

@@ -7,7 +7,7 @@ dataset:
   num_workers: 4
   image_size: 28
   pin_memory: true
-  channels: 1
+  channels: 3
   augmentation: low
   normalization: minmax
   resize_strategy: center_crop
@@ -17,7 +17,7 @@ model:
   type: unet
   params:
     dim: 28
-    channels: 1
+    channels: 3
     dim_mults: [1, 2, 4]
     use_attention_at: [1]
 

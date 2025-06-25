@@ -46,42 +46,43 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         log_epoch_start(epoch - 1, logger)
 
         running_loss = 0.0
-        for step, (batch, _) in enumerate(train_loader, 1):
-          batch_size = int(batch.shape[0])
-          batch = batch.to(device)
-          noise = torch.randn_like(batch)
-          t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
+        for step, train_batch in enumerate(train_loader, 1):
+            batch = train_batch['image']
+            batch_size = int(batch.shape[0])
+            batch = batch.to(device)
+            noise = torch.randn_like(batch)
+            t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
 
-          optimizer.zero_grad()
+            optimizer.zero_grad()
 
-          x_noisy = q_sample(x_start=batch, t=t, noise=noise, timesteps=cfg.diffusion.timesteps)
-          with autocast():
-            pred_noise = model(x_noisy, t)
+            x_noisy = q_sample(x_start=batch, t=t, noise=noise, timesteps=cfg.diffusion.timesteps)
+            with autocast():
+              pred_noise = model(x_noisy, t)
 
-          # 3) cast back to FP32 for loss
-          pred_noise = pred_noise.float()
-          if cfg.diffusion.loss_type == 'l1':
-            loss = F.l1_loss(noise, pred_noise)
-          elif cfg.diffusion.loss_type == 'l2':
-            loss = F.mse_loss(noise, pred_noise)
-          elif cfg.diffusion.loss_type == "huber":
-            loss = F.smooth_l1_loss(noise, pred_noise)
+            # 3) cast back to FP32 for loss
+            pred_noise = pred_noise.float()
+            if cfg.diffusion.loss_type == 'l1':
+                loss = F.l1_loss(noise, pred_noise)
+            elif cfg.diffusion.loss_type == 'l2':
+                loss = F.mse_loss(noise, pred_noise)
+            elif cfg.diffusion.loss_type == "huber":
+                loss = F.smooth_l1_loss(noise, pred_noise)
 
-          # backward with the scaler
-          scaler.scale(loss).backward()
-          scaler.step(optimizer)
-          scaler.update()
+            # backward with the scaler
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
-          # optional: free any cached fragments
+            # optional: free any cached fragments
 
-          ema.update()
-          torch.cuda.empty_cache()
+            ema.update()
+            torch.cuda.empty_cache()
 
-          running_loss += loss.item()
-          global_step += 1
+            running_loss += loss.item()
+            global_step += 1
 
-          # ── Periodic Logging ────────────────────────────────
-          if global_step % cfg.training.log_every_step == 0:
+            # ── Periodic Logging ────────────────────────────────
+            if global_step % cfg.training.log_every_step == 0:
               log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer, wandb_tracker=wandb_run)
               checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
 
@@ -97,7 +98,6 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
             visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
         if device.type == "cuda":
             torch.cuda.empty_cache()
-
     total_time = time.time() - start_time
     log_training_end(logger, total_time)
     alert_on_success(

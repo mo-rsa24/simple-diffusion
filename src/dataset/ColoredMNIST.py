@@ -8,11 +8,16 @@ from src.registry.mappings import COLOR_MAP
 
 
 class ColoredMNIST(Dataset):
-    def __init__(self, root, train=True, download=True, variant="foreground", color_map=COLOR_MAP, transform=None):
+    def __init__(self, root, train=True, download=True, variant="foreground", color_map=COLOR_MAP, transform=None, number: int = None):
         self.mnist = MNIST(root=root, train=train, download=download)
         self.variant = variant
         self.color_map = color_map
         self.transform = transform or transforms.ToTensor()
+
+        if number is not None:
+            mask = self.mnist.targets == number
+            self.mnist.data = self.mnist.data[mask]
+            self.mnist.targets = self.mnist.targets[mask]
 
     def __len__(self):
         return len(self.mnist)

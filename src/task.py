@@ -1,5 +1,5 @@
-from src.train.classifier.train import train as train_mnist
-from src.train.classifier.train import test as test_mnist
+from src.train.classifier.trainMNIST import train as train_mnist
+from src.train.classifier.trainMNIST import test as test_mnist
 from src.train.train import train
 
 def classify_task(cfg, dirs, model, train_loader, val_loader, test_loader, device, logger, epochs, eval_interval):
