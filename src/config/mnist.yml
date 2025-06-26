@@ -24,13 +24,13 @@ model:
 optimizer:
   type: "Adam"
   params:
-    lr: !!float "1e-3"
+    lr: !!float "2e-4"
     betas:      [0.9, 0.999]
     weight_decay: 0.0
 
 diffusion:
-  timesteps: 300
-  loss_type: "huber"
+  timesteps: 1000
+  loss_type: "l2"
   beta_start: 0.0001
   ema_decay: 0.9999
   beta_end: 0.02

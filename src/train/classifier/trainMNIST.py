@@ -105,7 +105,7 @@ def train(cfg: Config, dirs: Dict, model: BaseClassifier, train_loader, val_load
             global_step += 1
             if global_step % 1 == 0:
                 log_batch(step, loss, learning_rate, logger, writer=None, wandb_tracker=None)
-            break
+
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch}: loss={avg_loss:.4f}")
         for k in acc_dict:
@@ -116,7 +116,6 @@ def train(cfg: Config, dirs: Dict, model: BaseClassifier, train_loader, val_load
         if val_loader and (epoch + 1) % eval_interval == 0:
             evaluate_multilabel(model, val_loader, device, criterion)
             visualize_predictions(model, dirs, val_loader, device, epoch=epoch, n=4)
-        break
     total_time = time.time() - start_time
     log_training_end(logger, total_time)
     alert_on_success(

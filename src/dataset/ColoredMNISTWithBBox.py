@@ -1,6 +1,4 @@
 import random
-
-from pandas.tests.tools.test_to_numeric import transform
 from torchvision.datasets import MNIST
 from torchvision import transforms
 from torch.utils.data import Dataset
@@ -57,7 +55,6 @@ class ColoredMNISTWithBBox(Dataset):
             final_tensor = transforms.ToTensor()(img_with_bbox)
         return {
             "image": final_tensor,
-            "idx": idx,
             "digit_label": digit_label,
             "color_label": color_label,
             "bbox_label": bbox_label,
