@@ -1,9 +1,5 @@
 import argparse
-import os.path
-from typing import Dict
 import torch
-from PIL.ImImagePlugin import number
-from pandas.tests.tools.test_to_datetime import epochs
 from src.models.ema import EMA
 from src.models.unet import Unet
 from src.monitoring.alert_notifier import send_failure_email
@@ -47,7 +43,7 @@ if __name__ == "__main__":
     logger, writer, wandb_run = init_observers(cfg, dirs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     try:
-        loaders = DATASET_LOADERS[args.dataset](cfg, number=args.number, task=args.task)
+        loaders = DATASET_LOADERS[args.dataset](cfg, number=args.number, task=args.task) # **vars(args)
         if args.dataset.startswith("MNIST") and args.dataset != "MNIST":
             train_loader, val_loader, test_loader = loaders.get(args.color)
         else:

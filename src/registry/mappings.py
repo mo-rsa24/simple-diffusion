@@ -38,7 +38,7 @@ MODEL_REGISTRY = {
 }
 
 DATASET_LOADERS = {
-    "MNIST": lambda cfg, number=None: get_mnist_loaders(cfg, number=number),
-    "MNIST_COLOR": lambda cfg, number=None, task="classify", batch_size=8: get_separate_loader(number=number, batch_size=batch_size, task=task),
-    "MNIST_BBOX": lambda cfg, number=None, task="classify", batch_size=8: get_separate_loader(dataset="MNIST_BBOX", number=number, batch_size=batch_size, task=task),
+    "MNIST": lambda cfg, **kwargs: get_mnist_loaders(cfg, number=kwargs.get("number")),
+    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(number=kwargs.get("number"), batch_size=kwargs.get("batch_size", 8), task=kwargs.get("task", "classify")),
+    "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(dataset="MNIST_BBOX", number=kwargs.get("number"), batch_size=kwargs.get("batch_size", 8), task=kwargs.get("task", "classify")),
 }
