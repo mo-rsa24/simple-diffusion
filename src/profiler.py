@@ -1,6 +1,6 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
-from models.unet import Unet
+from src.models.vanilla.unet import Unet
 import logging
 from datetime import datetime
 

@@ -28,6 +28,7 @@ USE_TB=""
 TASK=""
 COLOR=""
 NUMBER=""
+GEN_MODEL=""
 JOB_NAME=""
 OUTPUT_DIR=""
 ERROR_DIR=""
@@ -41,6 +42,7 @@ while [[ "$#" -gt 0 ]]; do
         --task|-t) TASK="$2"; shift ;;
         --color|-c) COLOR="$2"; shift ;;
         --number|-n) NUMBER="$2"; shift ;;
+        --gen_model|-g) GEN_MODEL="$2"; shift ;;
         --use_wandb) USE_WANDB="true" ;;
         --use_tensorboard) USE_TB="true" ;;
         --job-name) JOB_NAME="$2"; shift ;;
@@ -106,6 +108,7 @@ print_kv "Dataset" "$DATASET"
 print_kv "Task" "${TASK:-<none>}"
 print_kv "Color" "${COLOR:-<none>}"
 print_kv "Number" "${NUMBER:-<none>}"
+print_kv "Generate Model" "${GEN_MODEL:-<none>}"
 print_kv "Partition" "$PARTITION"
 print_kv "Job Name" "$JOB_NAME"
 print_kv "Output Dir" "$OUTPUT_DIR"
@@ -120,7 +123,7 @@ SBATCH_CMD="sbatch --job-name=\"$JOB_NAME\" \
     --output=\"$OUTPUT_DIR/%x_%j.out\" \
     --error=\"$ERROR_DIR/%x_%j.err\" \
     src/scripts/run_job.slurm \
-    \"$EXP_ID\" \"$RUN_ID\" \"$DATASET\" \"$TASK\" \"$COLOR\" \"$NUMBER\" \"$USE_WANDB\" \"$USE_TB\""
+    \"$EXP_ID\" \"$RUN_ID\" \"$DATASET\" \"$TASK\" \"$COLOR\" \"$NUMBER\" \"GEN_MODEL\" \"$USE_WANDB\" \"$USE_TB\""
 
 info "Submitting job with the following command:"
 echo -e "${CYAN}$SBATCH_CMD${NC}" | tee -a "$LOG_FILE"

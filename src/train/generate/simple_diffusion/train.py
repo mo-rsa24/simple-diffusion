@@ -4,12 +4,12 @@ from typing import Dict
 import torch
 import torch.nn.functional as F
 from src.config.configs import Config
-from src.models.ema import EMA
-from src.models.unet import Unet
+from src.models.vanilla.ema import EMA
+from src.models.vanilla.unet import Unet
 from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.train.logging.training_logger_utils import log_training_start, log_epoch_start, log_batch, log_epoch_summary, \
     visualize_epoch, log_json, log_training_end
-from src.models.diffusion import generate_batch
+from src.models.vanilla.diffusion import generate_batch
 from src.utils.calculations import q_sample
 from src.utils.checkpoint_manager import CheckpointManager
 from datetime import timedelta

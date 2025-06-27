@@ -103,17 +103,60 @@ def show_image(img, title=None):
     plt.show()
 
 
-def save_side_by_side_images(real, generated, side_by_side_dir):
+import matplotlib.pyplot as plt
+from pathlib import Path
+import torch
+
+def save_side_by_side_images(real: torch.Tensor,
+                             generated: torch.Tensor,
+                             side_by_side_dir: Path):
+    """
+    Save paired real vs. generated images side by side.
+    Supports both grayscale (1×H×W) and RGB (3×H×W) CHW tensors.
+    """
     n = min(len(real), len(generated))
+    side_by_side_dir.mkdir(parents=True, exist_ok=True)
+
     for i in range(n):
+        # 1) Pull out the i-th sample
+        real_img = real[i].detach().cpu()
+        gen_img  = generated[i].detach().cpu()
+
+        # 2) Normalize generated from [-1,1] → [0,1]
+        #    (your T.Lambda maps inputs to [-1,1], but model outputs can drift)
+        gen_img = gen_img.clamp(-1, 1)
+        gen_img = (gen_img + 1) / 2
+
+        # 3) Convert CHW → HWC or HW depending on channels
+        def chw_to_display(img: torch.Tensor):
+            C, H, W = img.shape
+            if C == 1:
+                # grayscale: squeeze to (H, W)
+                arr = img.squeeze(0).numpy()
+                cmap = "gray"
+            elif C == 3:
+                # RGB: permute to (H, W, 3)
+                arr = img.permute(1, 2, 0).numpy()
+                cmap = None
+            else:
+                raise ValueError(f"Unsupported channel count: {C}")
+            return arr, cmap
+
+        real_arr, real_cmap = chw_to_display(real_img)
+        gen_arr,  gen_cmap  = chw_to_display(gen_img)
+
+        # 4) Plot side by side
         fig, axes = plt.subplots(1, 2, figsize=(4, 2))
-        axes[0].imshow(real[i].cpu().squeeze(), cmap="gray")
-        axes[0].set_title("Real"); axes[0].axis("off")
-        axes[1].imshow(generated[i].cpu().squeeze(), cmap="gray")
+        axes[0].imshow(real_arr, cmap=real_cmap, vmin=0, vmax=1, interpolation="nearest")
+        axes[0].set_title("Real");      axes[0].axis("off")
+
+        axes[1].imshow(gen_arr, cmap=gen_cmap,  vmin=0, vmax=1, interpolation="nearest")
         axes[1].set_title("Generated"); axes[1].axis("off")
+
         fig.tight_layout()
         fig.savefig(side_by_side_dir / Path(f"sample_{i:03d}_comparison.png"))
         plt.close(fig)
+
 
 from pathlib import Path
 import matplotlib.pyplot as plt

@@ -25,6 +25,7 @@ USE_TB=""
 TASK=""
 COLOR=""
 NUMBER=""
+GEN_MODEL=""
 
 # Parse CLI arguments
 info "Parsing command line arguments..."
@@ -36,6 +37,7 @@ while [[ "$#" -gt 0 ]]; do
         --task|-t) TASK="$2"; shift ;;
         --color|-c) COLOR="$2"; shift ;;
         --number|-n) NUMBER="$2"; shift ;;
+        --gen_model|-g) GEN_MODEL="$2"; shift ;;
         --use_wandb) USE_WANDB="true" ;;
         --use_tensorboard) USE_TB="true" ;;
         *) error "Unknown parameter passed: $1"; exit 1 ;;
@@ -50,6 +52,7 @@ print_kv "Dataset" "$DATASET"
 print_kv "Task" "${TASK:-<none>}"
 print_kv "Color" "${COLOR:-<none>}"
 print_kv "Number" "${NUMBER:-<none>}"
+print_kv "Generate Model" "${GEN_MODEL:-<none>}"
 print_kv "Use WandB" "${USE_WANDB:-<none>}"
 print_kv "Use TensorBoard" "${USE_TB:-<none>}"
 
@@ -83,6 +86,9 @@ if [[ -n "$COLOR" ]]; then
 fi
 if [[ -n "$NUMBER" ]]; then
     PY_CMD+=" --number \"$NUMBER\""
+fi
+if [[ -n "$GEN_MODEL" && "$GEN_MODEL" != "None" ]]; then
+    PY_CMD+=" --gen_model \"$GEN_MODEL\""
 fi
 if [[ "$USE_WANDB" == "true" ]]; then
     PY_CMD+=" --use_wandb"

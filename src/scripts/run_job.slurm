@@ -12,8 +12,9 @@ DATASET="$3"
 TASK="$4"
 COLOR="$5"
 NUMBER="$6"
-USE_WANDB="$7"
-USE_TB="$8"
+GEN_MODEL="$7"
+USE_WANDB="$8"
+USE_TB="$9"
 
 # --- Activate environment ---
 source ~/.bashrc
@@ -41,6 +42,9 @@ if [[ -n "$COLOR" && "$COLOR" != "None" ]]; then
 fi
 if [[ -n "$NUMBER" && "$NUMBER" != "None" ]]; then
     PY_CMD+=" --number \"$NUMBER\""
+fi
+if [[ -n "$GEN_MODEL" && "$GEN_MODEL" != "None" ]]; then
+    PY_CMD+=" --gen_model \"$GEN_MODEL\""
 fi
 if [[ "$USE_WANDB" == "true" ]]; then
     PY_CMD+=" --use_wandb"

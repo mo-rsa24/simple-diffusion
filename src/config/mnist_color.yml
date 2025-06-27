@@ -16,9 +16,14 @@ dataset:
 model:
   type: unet
   params:
-    dim: 28
-    channels: 3
+    dim: 64
+    init_dim: 64
+    out_dim: null
     dim_mults: [1, 2, 4]
+    channels: 3
+    latent_dim: 64
+    self_condition: false
+    resnet_block_groups: 4
     use_attention_at: [1]
 
 optimizer:
@@ -37,11 +42,11 @@ diffusion:
 
 training:
   epochs: 100
-  log_every_step: 1000 # 500
-  log_every_epoch: 20 # 20
+  log_every_step: 1 # 500
+  log_every_epoch: 1 # 20
 
 dirs:
-  cluster_base: "/gluster/mmolefe/PhD/simple-diffusion"
+  cluster_base: "/gluster/mmolefe/PhD/vanilla"
   local_base: .
   ckpt_dir: "./checkpoints"
   logs_dir: "./logs"

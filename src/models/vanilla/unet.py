@@ -1,14 +1,14 @@
 from torch import nn
 
-from src.models.attention import LinearAttention, Attention
-from src.models.embeddings import SinusoidalPositionEmbeddings
-from src.models.helpers import exists, default, Residual, Downsample, Upsample
+from src.models.vanilla.attention import LinearAttention, Attention
+from src.models.vanilla.embeddings import SinusoidalPositionEmbeddings
+from src.models.vanilla.helpers import exists, default, Residual, Downsample, Upsample
 from einops import rearrange, reduce
 import torch
 from functools import partial
 import torch.nn.functional as F
 
-from src.models.normalization import PreNorm
+from src.models.vanilla.normalization import PreNorm
 from torch.utils.checkpoint import checkpoint
 
 class Unet(nn.Module):
@@ -103,7 +103,7 @@ class Unet(nn.Module):
 
         h = []
 
-        for block, attn, downsample in self.downs:
+        for block, attn, downsample in self.downs: # dim_mutls [1, 2, 4]
             x = checkpoint(block, x, t)
             h.append(x)              # <--- Store skip only here!
             x = checkpoint(attn, x)
