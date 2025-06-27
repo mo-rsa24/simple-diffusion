@@ -41,7 +41,7 @@ training:
   log_every_epoch: 20 #20
 
 dirs:
-  cluster_base: "/gluster/mmolefe/PhD/simple-diffusion"
+  cluster_base: "/gluster/mmolefe/PhD/vanilla"
   local_base: .
   ckpt_dir: "./checkpoints"
   logs_dir: "./logs"

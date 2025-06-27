@@ -8,7 +8,6 @@ import torch
 from torchvision.utils import save_image
 
 from .log import log_grid_images, log_table_wandb
-from ...config.configs import Config
 from ...utils.visualization import save_side_by_side_images
 
 
@@ -101,7 +100,7 @@ def visualize_epoch(generated: torch.Tensor, real: torch.Tensor,  dirs: Dict, ep
     samples_dir.mkdir(parents=True, exist_ok=True)
     # --- 1) Save each generated image individually ---
     for i, img in enumerate(generated):
-        save_image(img,  samples_dir / Path(f"{prefix}_{i:03d}.png"))
+        save_image(img,  samples_dir / Path(f"{prefix}_{i:03d}.png"), normalize=True, value_range=(0, 1))
 
     # --- 2) Side-by-side comparisons (one per index) ---
     side_by_side_dir: Path = dirs.get("results_side_by_side") / Path(f"epoch_{epoch}")

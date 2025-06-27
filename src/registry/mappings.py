@@ -4,6 +4,8 @@ from src.dataset.utils import get_separate_loader
 from src.models.classifier.digit_classifier import DigitClassifier
 from src.models.classifier.digit_color_bbox_classifier import DigitColorBBoxClassifier
 from src.models.classifier.digit_color_classifier import DigitColorClassifier
+from src.models.ldm.autoencoder import SimpleConvEncoder, SimpleConvDecoder
+from src.models.vanilla.unet import Unet
 
 COLOR_MAP = {
     0: (255, 0, 0),     # Red
@@ -31,10 +33,21 @@ BBOX_COLOR_MAP = {
     9: "magenta"
 }
 
-MODEL_REGISTRY = {
+CLASSIFIER_MODEL_REGISTRY = {
     "MNIST": DigitClassifier,
     "MNIST_COLOR": DigitColorClassifier,
     "MNIST_BBOX": DigitColorBBoxClassifier,
+}
+
+GENERATION_MODEL_REGISTRY = {
+    "vanilla": {
+        "unet": Unet
+    },
+    "ldm": {
+        "unet": Unet,
+        "encoder": SimpleConvEncoder,
+        "decoder": SimpleConvDecoder,
+    }
 }
 
 DATASET_LOADERS = {
