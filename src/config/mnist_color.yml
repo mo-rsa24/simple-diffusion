@@ -1,0 +1,76 @@
+# config/tb.yaml
+seed: 42
+
+dataset:
+  data_dir: "./data"
+  batch_size: 128
+  num_workers: 4
+  image_size: 28
+  pin_memory: true
+  channels: 3
+  augmentation: low
+  normalization: minmax
+  resize_strategy: center_crop
+  hist_eq: false
+
+model:
+  type: unet
+  params:
+    dim: 64
+    init_dim: 64
+    out_dim: null
+    dim_mults: [1, 2, 4]
+    channels: 3
+    latent_dim: 64
+    self_condition: false
+    resnet_block_groups: 4
+    use_attention_at: [1]
+
+optimizer:
+  type: "Adam"
+  params:
+    lr: !!float "2e-4"
+    betas:      [0.9, 0.999]
+    weight_decay: 0.0
+
+diffusion:
+  timesteps: 1000
+  loss_type: "l2"
+  beta_start: 0.0001
+  ema_decay: 0.9999
+  beta_end: 0.02
+
+training:
+  epochs: 100
+  log_every_step: 1 # 500
+  log_every_epoch: 1 # 20
+
+dirs:
+  cluster_base: "/gluster/mmolefe/PhD/vanilla"
+  local_base: .
+  ckpt_dir: "./checkpoints"
+  logs_dir: "./logs"
+  results_dir:
+    base: "./results"
+    samples: "./samples"
+    side_by_side: "./side_by_side"
+    feature_maps: "./feature_maps"
+    tsne: "./tsne"
+  tensorboard_dir: "./tensorboard"
+  wandb_dir: "./wandb"
+
+logging:
+  use_tensorboard: false
+  use_wandb: false
+
+sampling:
+  batch_size: 4
+  channels: 3
+  blit: true
+  repeat_delay: 1000
+
+observability:
+  feature_maps: false
+  batch_grid: true
+  sample_table: true
+  diffusion_process: true
