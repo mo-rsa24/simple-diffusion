@@ -40,7 +40,11 @@ class DiffusionConfig:
 @dataclass
 class ModelConfig:
     type: str
-    params: Dict[str, Any]
+    vpsde: Dict[str, Any]
+    ldm: Dict[str, Any]
+    edm: Dict[str, Any]
+    slot: Dict[str, Any]
+    vanilla: Dict[str, Any]
 
 @dataclass
 class OptimizerConfig:
