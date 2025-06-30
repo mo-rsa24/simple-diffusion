@@ -87,14 +87,14 @@ def train(cfg: Config,
 
         # preview samples
         ema.apply_shadow()
-        sample = edm_sampler(
-            model,
-            (cfg.sampling.batch_size,
-             cfg.dataset.channels,
-             cfg.dataset.image_size,
-             cfg.dataset.image_size),
-            **cfg.sampling.edm_sampler.params
+        shape = (
+            cfg.sampling.batch_size,
+            cfg.dataset.channels,
+            cfg.dataset.image_size,
+            cfg.dataset.image_size,
         )
+        sampler_cfg = getattr(cfg.sampling, "edm_sampler", {}).get("params", {})
+        sample = edm_sampler(model, shape, **sampler_cfg)
         ema.restore()
 
         if epoch % cfg.training.log_every_epoch == 0:

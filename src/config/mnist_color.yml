@@ -93,6 +93,8 @@ sampling:
   channels: 3
   blit: true
   repeat_delay: 1000
+  edm_sampler:
+    params: { }
 
 observability:
   feature_maps: false

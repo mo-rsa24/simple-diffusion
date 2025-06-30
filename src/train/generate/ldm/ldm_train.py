@@ -50,7 +50,9 @@ def train(cfg, dirs, model, ema, encoder, decoder, train_loader, logger, device,
                     x_start=batch,
                     t=t,
                     loss_type=cfg.diffusion.loss_type,
-                    timesteps=cfg.diffusion.timesteps
+                    timesteps=cfg.diffusion.timesteps,
+                    beta_start=cfg.diffusion.beta_start,
+                    beta_end=cfg.diffusion.beta_end,
                 )
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -78,7 +80,14 @@ def train(cfg, dirs, model, ema, encoder, decoder, train_loader, logger, device,
         # Generate samples in latent space using UNet, then decode to image
         with torch.no_grad():
             latent_shape = (cfg.sampling.batch_size, encoder.out_dim, encoder.spatial_h, encoder.spatial_w)
-            samples = latent_sample(model, decoder, latent_shape, timesteps=cfg.diffusion.timesteps)
+            samples = latent_sample(
+                model,
+                decoder,
+                latent_shape,
+                timesteps=cfg.diffusion.timesteps,
+                beta_start=cfg.diffusion.beta_start,
+                beta_end=cfg.diffusion.beta_end,
+            )
         ema.restore()
         if epoch % cfg.training.log_every_epoch == 0:
             visualize_epoch(samples, real_batch, dirs, epoch=epoch, wandb_run=wandb_run, writer=writer)

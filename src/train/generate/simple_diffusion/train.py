@@ -55,7 +55,14 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
 
             optimizer.zero_grad()
 
-            x_noisy = q_sample(x_start=batch, t=t, noise=noise, timesteps=cfg.diffusion.timesteps)
+            x_noisy = q_sample(
+                x_start=batch,
+                t=t,
+                noise=noise,
+                timesteps=cfg.diffusion.timesteps,
+                beta_start=cfg.diffusion.beta_start,
+                beta_end=cfg.diffusion.beta_end,
+            )
             with autocast():
               pred_noise = model(x_noisy, t)
 
@@ -92,7 +99,15 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
         real_batch = batch[:cfg.sampling.batch_size].to(device)  # take first 16 real images
         ema.apply_shadow()
-        generated = generate_batch(model, image_size=cfg.dataset.image_size, batch_size=cfg.sampling.batch_size, channels=cfg.dataset.channels,timesteps=cfg.diffusion.timesteps)
+        generated = generate_batch(
+            model,
+            image_size=cfg.dataset.image_size,
+            batch_size=cfg.sampling.batch_size,
+            channels=cfg.dataset.channels,
+            timesteps=cfg.diffusion.timesteps,
+            beta_start=cfg.diffusion.beta_start,
+            beta_end=cfg.diffusion.beta_end,
+        )
         ema.restore()
         if epoch % cfg.training.log_every_epoch == 0:
             visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)

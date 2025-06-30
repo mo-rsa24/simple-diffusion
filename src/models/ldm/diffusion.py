@@ -5,12 +5,13 @@ from tqdm import tqdm
 from src.models.vanilla.diffusion import p_sample
 from src.utils.calculations import q_sample
 
-def latent_p_losses(denoise_model, encoder, x_start, t, loss_type="l2", timesteps=300):
+def latent_p_losses(denoise_model, encoder, x_start, t, loss_type="l2", timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
     with torch.no_grad():
         z_start = encoder(x_start)
 
     noise = torch.randn_like(z_start)
-    z_noisy = q_sample(x_start=z_start, t=t, noise=noise, timesteps=timesteps)
+    # z_noisy = q_sample(x_start=z_start, t=t, noise=noise, timesteps=timesteps)
+    z_noisy = q_sample(x_start=z_start, t=t, noise=noise, timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
     predicted_noise = denoise_model(z_noisy, t)
 
     if loss_type == 'l1':
@@ -25,13 +26,13 @@ def latent_p_losses(denoise_model, encoder, x_start, t, loss_type="l2", timestep
     return loss
 
 @torch.no_grad()
-def latent_sample(model, decoder, latent_shape, timesteps=300):
+def latent_sample(model, decoder, latent_shape, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
     device = next(model.parameters()).device
     z = torch.randn(latent_shape).to(device)
 
     for i in tqdm(reversed(range(0, timesteps)), desc='Latent Sampling', total=timesteps):
         t = torch.full((z.size(0),), i, device=device, dtype=torch.long)
-        z = p_sample(model, z, t, i, timesteps=timesteps)
+        z = p_sample(model, z, t, i, timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
 
     recon = decoder(z)
     return recon

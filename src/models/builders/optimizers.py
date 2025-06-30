@@ -12,9 +12,8 @@ def cosine_beta_schedule(timesteps, s=0.008):
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0.0001, 0.9999)
 
-def linear_beta_schedule(timesteps):
-    beta_start = 0.0001
-    beta_end = 0.02
+def linear_beta_schedule(timesteps: int, beta_start: float = 0.0001, beta_end: float = 0.02):
+    """Linear schedule from ``beta_start`` to ``beta_end`` over ``timesteps``."""
     return torch.linspace(beta_start, beta_end, timesteps)
 
 def quadratic_beta_schedule(timesteps):

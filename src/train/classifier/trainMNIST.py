@@ -58,10 +58,20 @@ def test(model, test_loader):
 
 
 
-def train(cfg: Config, dirs: Dict, model: BaseClassifier, train_loader, val_loader, device, logger, epochs=5, eval_interval=1):
+def train(
+    cfg: Config,
+    dirs: Dict,
+    model: BaseClassifier,
+    train_loader,
+    val_loader,
+    device,
+    logger,
+    eval_interval=1,
+):
     criterion = nn.CrossEntropyLoss()
-    learning_rate = 1e-3
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    if cfg.optimizer.type.lower() != "adam":
+        raise ValueError(f"Unsupported optimizer: {cfg.optimizer.type}")
+    optimizer = torch.optim.Adam(model.parameters(), **cfg.optimizer.params)
     start_time = time.time()
     log_training_start(
         logger,
@@ -69,13 +79,13 @@ def train(cfg: Config, dirs: Dict, model: BaseClassifier, train_loader, val_load
         experiment_id=cfg.experiment_id,
         run_id=cfg.run_id,
         task=cfg.task,
-        total_epochs=epochs,
-        total_batches=len(train_loader)
+        total_epochs=cfg.training.epochs,
+        total_batches=len(train_loader),
     )
     global_step = 0
     start_epoch = 1
     model.train()
-    for epoch in range(start_epoch, epochs + 1):
+    for epoch in range(start_epoch, cfg.training.epochs + 1):
         epoch_start = time.time()
         total_loss, correct_digit, correct_color, total = 0, 0, 0, 0
         log_epoch_start(epoch - 1, logger)
@@ -104,14 +114,21 @@ def train(cfg: Config, dirs: Dict, model: BaseClassifier, train_loader, val_load
 
             global_step += 1
             if global_step % 1 == 0:
-                log_batch(step, loss, learning_rate, logger, writer=None, wandb_tracker=None)
+                log_batch(
+                    step,
+                    loss,
+                    cfg.optimizer.params.get("lr", 1e-3),
+                    logger,
+                    writer=None,
+                    wandb_tracker=None,
+                )
 
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch}: loss={avg_loss:.4f}")
         for k in acc_dict:
             print(f"  {k.replace('_logits', '')} acc = {acc_dict[k] / n_samples:.4f}")
         epoch_time = time.time() - epoch_start
-        log_epoch_summary(logger, epoch, epochs, avg_loss, epoch_time=epoch_time)
+        log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
         log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
         if val_loader and (epoch + 1) % eval_interval == 0:
             evaluate_multilabel(model, val_loader, device, criterion)

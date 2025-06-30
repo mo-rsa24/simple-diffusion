@@ -5,7 +5,9 @@ import torch.nn.functional as F
 from src.utils.image_manipulation import extract
 from src.utils.transforms import reverse_transform
 
-get_betas = lambda timesteps: linear_beta_schedule(timesteps=timesteps)
+def get_betas(timesteps: int, beta_start: float, beta_end: float):
+    return linear_beta_schedule(timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
+
 def get_alphas(betas):
     alphas = 1. - betas
     alphas_cumprod = torch.cumprod(alphas, axis=0)
@@ -17,10 +19,10 @@ get_calculations = lambda alphas_cumprod: (torch.sqrt(alphas_cumprod), torch.sqr
 get_posterior_variance = lambda betas, alphas_cumprod_prev, alphas_cumprod: betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
 
 # forward diffusion (using the nice property)
-def q_sample(x_start, t, noise=None, timesteps = 300):
+def q_sample(x_start, t, noise=None, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
     if noise is None:
         noise = torch.randn_like(x_start)
-    betas = get_betas(timesteps)
+    betas = get_betas(timesteps, beta_start, beta_end)
     alphas_cumprod, alphas_cumprod_prev, sqrt_recip_alphas = get_alphas(betas=betas)
 
     sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod  = get_calculations(alphas_cumprod)
@@ -31,9 +33,9 @@ def q_sample(x_start, t, noise=None, timesteps = 300):
 
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
-def get_noisy_image(x_start, t):
+def get_noisy_image(x_start, t, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
   # add noise
-  x_noisy = q_sample(x_start, t=t)
+  x_noisy = q_sample(x_start, t=t, timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
 
   # turn back into PIL image
   noisy_image = reverse_transform(x_noisy.squeeze())

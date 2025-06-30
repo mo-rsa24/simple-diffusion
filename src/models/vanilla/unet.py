@@ -60,12 +60,14 @@ class Unet(nn.Module):
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
+            attn_block = Attention(dim_in) if ind in self.use_attention_at else LinearAttention(dim_in)
+
             self.downs.append(
-                    nn.ModuleList([
-                        block_klass(dim_in, dim_in, time_emb_dim=time_dim),  # Single ResNet block
-                        Residual(PreNorm(dim_in, LinearAttention(dim_in))),
-                        Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding=1),
-                    ])
+                nn.ModuleList([
+                    block_klass(dim_in, dim_in, time_emb_dim=time_dim),  # Single ResNet block
+                    Residual(PreNorm(dim_in, attn_block)),
+                    Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding=1),
+                ])
                 )
 
 
@@ -77,10 +79,12 @@ class Unet(nn.Module):
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind == (len(in_out) - 1)
 
+            attn_block = Attention(dim_out) if ind in self.use_attention_at else LinearAttention(dim_out)
+
             self.ups.append(
                 nn.ModuleList([
                     block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),  # Single ResNet block
-                    Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                    Residual(PreNorm(dim_out, attn_block)),
                     Upsample(dim_out, dim_in) if not is_last else nn.Conv2d(dim_out, dim_in, 3, padding=1),
                 ])
             )

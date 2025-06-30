@@ -57,9 +57,18 @@ if __name__ == "__main__":
             train_loader, val_loader, test_loader = loaders
         if args.task == "classify":
             model = CLASSIFIER_MODEL_REGISTRY[args.dataset]().to(device)
-            epochs, eval_interval = 5, 1
-            classify_task(cfg, dirs, model, train_loader, val_loader, test_loader, device, logger, epochs,
-                          eval_interval)
+            eval_interval = 1
+            classify_task(
+                cfg,
+                dirs,
+                model,
+                train_loader,
+                val_loader,
+                test_loader,
+                device,
+                logger,
+                eval_interval,
+            )
         elif args.task == "generate":
             if args.gen_model == "vanilla":
                 model_params = dict(cfg.model.vanilla)  # copy so we don't modify original config

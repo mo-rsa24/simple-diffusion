@@ -7,8 +7,8 @@ from src.utils.image_manipulation import extract
 
 
 @torch.no_grad()
-def p_sample(model, x, t, t_index, timesteps=300):
-    betas = get_betas(timesteps)
+def p_sample(model, x, t, t_index, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
+    betas = get_betas(timesteps, beta_start, beta_end)
     alphas_cumprod, alphas_cumprod_prev, sqrt_recip_alphas = get_alphas(betas=betas)
     sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod = get_calculations(alphas_cumprod)
     posterior_variance = get_posterior_variance(betas, alphas_cumprod_prev, alphas_cumprod)
@@ -36,11 +36,12 @@ def p_sample(model, x, t, t_index, timesteps=300):
     # Algorithm 2 (including returning all images)
 
 
-def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1", timesteps=300):
+def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1", timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
     if noise is None:
         noise = torch.randn_like(x_start)
 
-    x_noisy = q_sample(x_start=x_start, t=t, noise=noise, timesteps=timesteps)
+    # x_noisy = q_sample(x_start=x_start, t=t, noise=noise, timesteps=timesteps)
+    x_noisy = q_sample(x_start=x_start, t=t, noise=noise, timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
     predicted_noise = denoise_model(x_noisy, t)
 
     if loss_type == 'l1':
@@ -55,7 +56,7 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1", timesteps=30
     return loss
 
 @torch.no_grad()
-def p_sample_loop(model, shape, timesteps=300):
+def p_sample_loop(model, shape, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
     device = next(model.parameters()).device
 
     b = shape[0]
@@ -63,13 +64,14 @@ def p_sample_loop(model, shape, timesteps=300):
     img = torch.randn(shape, device=device)
 
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
-        img = p_sample(model, img, torch.full((b,), i, device=device, dtype=torch.long), i, timesteps=timesteps)
+        img = p_sample(model, img, torch.full((b,), i, device=device, dtype=torch.long), i, timesteps=timesteps,
+                       beta_start=beta_start, beta_end=beta_end)
     return img
 
 
 @torch.no_grad()
-def sample(model, image_size, batch_size=16, channels=3, timesteps=300):
-    return p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
+def sample(model, image_size, batch_size: int = 16, channels: int = 3, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
+    return p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
 
 
 @torch.no_grad()
@@ -78,7 +80,9 @@ def generate_batch(model,
                    batch_size: int = 16,
                    channels: int = 1,
                    timesteps: int = 300,
+                   beta_start: float = 0.0001,
+                   beta_end: float = 0.02,
                    device: torch.device = None) -> torch.Tensor:
     device = device or next(model.parameters()).device
-    final = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps)
+    final = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
     return final.to(device)
