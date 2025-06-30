@@ -4,7 +4,7 @@ from typing import Dict
 import torch
 import torch.nn.functional as F
 from src.config.configs import Config
-from src.models.vpsde.ScoreSdeUNet import VPSDE, dsm_loss, pc_sampler
+from src.models.vpsde.ScoreSdeUNet import VPSDE, dsm_loss, pc_sampler, ScoreSdeUNet
 from src.models.vanilla.ema import EMA
 from src.models.vanilla.unet import Unet
 from src.monitoring.email_alert_mailtrap import alert_on_success
@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 
 def train(cfg: Config,
           dirs: Dict,
-          model,
+          model: ScoreSdeUNet,
           ema: EMA,
           train_loader: DataLoader,
           logger,
@@ -32,7 +32,7 @@ def train(cfg: Config,
     # optimiser / scaler identical to DDPM script
     optimizer = Adam(model.parameters(), **cfg.optimizer.params)
     scaler    = GradScaler()
-    sde       = VPSDE(beta_min=0.1, beta_max=20.0)
+    sde       = model.sde
 
     start_time = time.time()
     log_training_start(
@@ -79,7 +79,7 @@ def train(cfg: Config,
                           cfg.optimizer.params.get("lr", 1e-4),
                           logger, writer=writer, wandb_tracker=wandb_run)
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
-
+            break
         # ── epoch-level summaries ─────────────────────────────
         avg_loss  = running_loss / len(train_loader)
         epoch_dur = time.time() - epoch_start
@@ -104,7 +104,7 @@ def train(cfg: Config,
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
-
+        break
     # ── training finished ────────────────────────────────────
     total_time = time.time() - start_time
     log_training_end(logger, total_time)

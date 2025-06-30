@@ -64,6 +64,6 @@ GENERATION_MODEL_REGISTRY = {
 
 DATASET_LOADERS = {
     "MNIST": lambda cfg, **kwargs: get_mnist_loaders(cfg, number=kwargs.get("number")),
-    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(number=kwargs.get("number"), batch_size=kwargs.get("batch_size", 8), task=kwargs.get("task", "classify")),
-    "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(dataset="MNIST_BBOX", number=kwargs.get("number"), batch_size=kwargs.get("batch_size", 8), task=kwargs.get("task", "classify")),
+    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(cfg, number=kwargs.get("number"), task=kwargs.get("task", "classify")),
+    "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(cfg, dataset="MNIST_BBOX", number=kwargs.get("number"), task=kwargs.get("task", "classify")),
 }

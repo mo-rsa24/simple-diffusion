@@ -6,7 +6,7 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from torch import autocast
+from torch.cuda.amp import autocast, GradScaler
 
 # Re‑use the existing backbone and embeddings
 from src.models.vanilla.unet import Unet  # noqa: E402
@@ -54,10 +54,19 @@ class VPSDE:
 class ScoreSdeUNet(nn.Module):
     """Wraps the existing UNet so that it outputs ∇ₓ log pₜ(x)."""
 
-    def __init__(self, sde: VPSDE | None = None, **unet_kwargs):
+    def __init__(self, sde: VPSDE | dict | None = None, **unet_kwargs):
         super().__init__()
         self.unet = Unet(**unet_kwargs)
-        self.sde = sde if sde is not None else VPSDE()
+        if isinstance(sde, dict):
+            sde_type = sde.get("type", "vp").lower()
+            if sde_type == "vp":
+                self.sde = VPSDE(beta_min=sde.get("beta_min", 0.1),
+                                 beta_max=sde.get("beta_max", 20.0))
+            else:
+                raise NotImplementedError(
+                    f"SDE type '{sde_type}' is not implemented")
+        else:
+            self.sde = sde if isinstance(sde, VPSDE) else VPSDE()
 
     # ──────────────────────────────────────────────────────────────────────
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # noqa: D401

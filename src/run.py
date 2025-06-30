@@ -44,7 +44,13 @@ if __name__ == "__main__":
     logger, writer, wandb_run = init_observers(cfg, dirs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     try:
-        loaders = DATASET_LOADERS[args.dataset](cfg, number=args.number, task=args.task) # **vars(args)
+        loaders = DATASET_LOADERS[args.dataset](
+            cfg,
+            number=args.number,
+            task=args.task,
+            batch_size=cfg.dataset.batch_size
+        )
+
         if args.dataset.startswith("MNIST") and args.dataset != "MNIST":
             train_loader, val_loader, test_loader = loaders.get(args.color)
         else:

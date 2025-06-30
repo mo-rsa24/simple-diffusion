@@ -1,3 +1,4 @@
+from src.config.configs import Config
 from src.dataset.ChestXRay import ChestXrayDataset
 from src.dataset.transforms import build_preprocessing, safe_augmentation
 from typing import Dict, Tuple
@@ -52,7 +53,7 @@ def get_mnist_loaders(name: str = "MNIST", batch_size: int = 128):
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
 
-def get_colored_loaders(dataset:str = "MNIST", variant: str="foreground", batch_size: int = 128, root="./data", number: int = None, task: str = "classify")-> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foreground", batch_size: int = 128, root="./data", number: int = None, task: str = "classify")-> Tuple[DataLoader, DataLoader, DataLoader]:
     """Return train/val/test DataLoaders for MNIST or FashionMNIST."""
     if task == "classify":
         transform = transforms.Compose([
@@ -77,15 +78,15 @@ def get_colored_loaders(dataset:str = "MNIST", variant: str="foreground", batch_
     val_len   = len(train_ds) - train_len
     train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
 
-    loader = lambda ds, shuffle: DataLoader(ds, batch_size, shuffle=shuffle, num_workers=4, pin_memory=False)
+    loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
-def get_separate_loader(dataset: str = "MNIST", batch_size=8, number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
-    dataset = {
-        "fg": get_colored_loaders(dataset=dataset, variant="foreground", number=number, batch_size=batch_size, task=task),
-        "bg": get_colored_loaders(dataset=dataset, variant="background", number=number, batch_size=batch_size, task=task),
+def get_separate_loader(cfg: Config, dataset: str = "MNIST", number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
+    loaders = {
+        "fg": get_colored_loaders(cfg, dataset=dataset, variant="foreground", number=number, task=task),
+        "bg": get_colored_loaders(cfg, dataset=dataset, variant="background", number=number, task=task),
     }
-    return dataset
+    return loaders
 
 # 🔵 For Foreground-Colored MNIST:
 def color_foreground(image, color_rgb):
