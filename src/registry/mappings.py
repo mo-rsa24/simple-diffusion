@@ -4,8 +4,11 @@ from src.dataset.utils import get_separate_loader
 from src.models.classifier.digit_classifier import DigitClassifier
 from src.models.classifier.digit_color_bbox_classifier import DigitColorBBoxClassifier
 from src.models.classifier.digit_color_classifier import DigitColorClassifier
+from src.models.edm.EDM import EDMUNet
 from src.models.ldm.autoencoder import SimpleConvEncoder, SimpleConvDecoder
+from src.models.slot_diffusion.SlotDiffusionUNet import SlotDiffusionUNet
 from src.models.vanilla.unet import Unet
+from src.models.vpsde.ScoreSdeUNet import ScoreSdeUNet
 
 COLOR_MAP = {
     0: (255, 0, 0),     # Red
@@ -47,6 +50,15 @@ GENERATION_MODEL_REGISTRY = {
         "unet": Unet,
         "encoder": SimpleConvEncoder,
         "decoder": SimpleConvDecoder,
+    },
+    "slot": {
+        "unet": SlotDiffusionUNet,
+    },
+    "vpsde": {
+        "unet": ScoreSdeUNet
+    },
+    "edm":{
+        "unet": EDMUNet
     }
 }
 
