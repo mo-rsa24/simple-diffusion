@@ -27,7 +27,7 @@ def parse_args():
     p.add_argument("--task", "-t", type=str, choices=["generate", "classify"], default="generate")
     p.add_argument("--color", "-c", type=str, choices=["fg", "bg"], default="fg")
     p.add_argument("--number", "-n", type=int, default=None)
-    p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm"], default="vanilla",  help="Which diffusion model architecture to use.")
+    p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm", "slot", "edm", "vpsde"], default="vanilla",  help="Which diffusion model architecture to use.")
     p.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     p.add_argument("--use_tensorboard", action="store_true", help="Enable TensorBoard logging")
     p.add_argument(
@@ -56,14 +56,13 @@ if __name__ == "__main__":
                           eval_interval)
         elif args.task == "generate":
             if args.gen_model == "vanilla":
-                model_params = dict(cfg.model.params)  # copy so we don't modify original config
-                _ = model_params.pop("latent_dim")  # fallback if missing
+                model_params = dict(cfg.model.vanilla)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.simple_diffusion.train import train as pixel_train  # your old train function
                 pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "ldm":
-                model_params = dict(cfg.model.params)  # copy so we don't modify original config
+                model_params = dict(cfg.model.ldm)  # copy so we don't modify original config
                 latent_dim = model_params.pop("latent_dim")# fallback if missing
                 model_params["channels"] = latent_dim
                 encoder = GENERATION_MODEL_REGISTRY["ldm"]["encoder"](
@@ -74,6 +73,26 @@ if __name__ == "__main__":
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.ldm.ldm_train import train as ldm_train
                 ldm_train(cfg, dirs, model, ema, encoder, decoder, train_loader, logger, device, writer, wandb_run)
+            elif args.gen_model == "slot":
+                model_params = dict(cfg.model.slot)  # copy so we don't modify original config
+                model = GENERATION_MODEL_REGISTRY["slot"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.slot.slot_train import train as slot_train
+                slot_train(cfg, dirs, model, ema, train_loader, logger, device, writer=None, wandb_run=None)
+            elif args.gen_model == "vpsde":
+                model_params = dict(cfg.model.vpsde)
+                model = GENERATION_MODEL_REGISTRY["vpsde"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.vpsde.vpsde_train import train as vpsde_train
+                vpsde_train(cfg, dirs, model, ema, train_loader,
+                          logger, device, writer, wandb_run)
+            elif args.gen_model == "edm":
+                model_params = dict(cfg.model.edm)
+                model = GENERATION_MODEL_REGISTRY["edm"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.edm.edm_train import train as edm_train
+                edm_train(cfg, dirs, model, ema, train_loader,
+                          logger, device, writer, wandb_run)
     except Exception as e:
         log_exception(logger, exception=e)
         send_failure_email(run_id=cfg.run_id, reason=str(e), epoch=0)

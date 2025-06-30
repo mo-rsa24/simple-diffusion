@@ -15,13 +15,38 @@ dataset:
 
 model:
   type: unet
-  params:
+  vpsde:
+    dim: 64
+    channels: 1
+    dim_mults: [ 1,2,4 ]
+    use_attention_at: [ 1 ]
+    sde:
+      type: vp        # "vp" or "ve"
+      beta_min: 0.1
+      beta_max: 20.0
+  ldm:
+    dim: 64
+    init_dim: 32
+    out_dim: null
+    dim_mults: [ 1, 2, 4 ]
+    channels: 1
+    latent_dim: 64
+    self_condition: false
+    resnet_block_groups: 4
+    use_attention_at: [ 1 ]
+  edm:
+    dim: 64
+    dim_mults: [ 1, 2, 4 ]
+    channels: 1
+  slot:
+    dim: 64
+    channels: 1
+  vanilla:
     dim: 64
     init_dim: 64
     out_dim: null
     dim_mults: [1, 2, 4]
     channels: 1
-    latent_dim: 64
     self_condition: false
     resnet_block_groups: 4
     use_attention_at: [1]
