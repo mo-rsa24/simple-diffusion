@@ -81,6 +81,21 @@ def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foregr
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
+def get_composable_loaders(cfg: Config, variant: str="foreground") -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Dataloaders for ComposableColoredMNISTWithBBox."""
+    from src.dataset.ComposableColoredMNISTWithBBox import ComposableColoredMNISTWithBBox
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x * 2. - 1.)
+    ])
+    train_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=True, variant=variant, transform=transform)
+    test_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=False, variant=variant, transform=transform)
+    train_len = int(0.9 * len(train_ds))
+    val_len = len(train_ds) - train_len
+    train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
+    loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
+    return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
+
 def get_separate_loader(cfg: Config, dataset: str = "MNIST", number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {
         "fg": get_colored_loaders(cfg, dataset=dataset, variant="foreground", number=number, task=task),
