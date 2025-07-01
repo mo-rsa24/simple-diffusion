@@ -22,8 +22,26 @@ def parse_args():
     p.add_argument("--task", "-t", type=str, choices=["generate", "classify"], default="generate")
     p.add_argument("--color", "-c", type=str, choices=["fg", "bg"], default="fg")
     p.add_argument("--number", "-n", type=int, default=None)
-    p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm", "slot", "edm", "vpsde", "composable"],
-                   default="vanilla", help="Which diffusion model architecture to use.")
+    p.add_argument(
+        "--gen_model",
+        "-g",
+        type=str,
+        choices=[
+            "vanilla",
+            "ldm",
+            "slot",
+            "edm",
+            "vpsde",
+            "composable",
+            "comp_unet",
+            "cascaded",
+            "guided",
+            "moe",
+            "classifier_guided",
+        ],
+        default="vanilla",
+        help="Which diffusion model architecture to use.",
+    )
     p.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     p.add_argument("--use_tensorboard", action="store_true", help="Enable TensorBoard logging")
     p.add_argument("--resume", action="store_true", help="Resume training from latest checkpoint")
@@ -71,11 +89,14 @@ if __name__ == "__main__":
         exit(0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     try:
+        extra = {}
+        if args.dataset == "MNIST_COMPOSABLE":
+            extra["variant"] = "foreground" if args.color == "fg" else "background"
         loaders = DATASET_LOADERS[args.dataset](
             cfg,
             number=args.number,
             task=args.task,
-            batch_size=cfg.dataset.batch_size
+            **extra
         )
 
         if args.dataset.startswith("MNIST") and args.dataset != "MNIST":
@@ -101,7 +122,7 @@ if __name__ == "__main__":
                 model_params = dict(cfg.model.vanilla)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
-                from src.train.generate.simple_diffusion.train import train as pixel_train  # your old train function
+                from src.train.generate.simple_diffusion.train import train as pixel_train
                 pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "ldm":
                 model_params = dict(cfg.model.ldm)  # copy so we don't modify original config
@@ -143,6 +164,45 @@ if __name__ == "__main__":
 
                 composable_train(cfg, dirs, model, ema, train_loader,
                                  logger, device, writer, wandb_run)
+            elif args.gen_model == "comp_unet":
+                model_params = dict(cfg.model.composable)
+                model = GENERATION_MODEL_REGISTRY["comp_unet"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable_architectures import comp_unet_train
+
+                comp_unet_train(cfg, dirs, model, ema, train_loader,
+                                logger, device, writer, wandb_run)
+            elif args.gen_model == "cascaded":
+                model_params = dict(cfg.model.composable)
+                model = GENERATION_MODEL_REGISTRY["cascaded"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable_architectures import cascaded_train
+
+                cascaded_train(cfg, dirs, model, ema, train_loader,
+                               logger, device, writer, wandb_run)
+            elif args.gen_model == "guided":
+                model_params = dict(cfg.model.composable)
+                model = GENERATION_MODEL_REGISTRY["guided"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable_architectures import guided_train
+
+                guided_train(cfg, dirs, model, ema, train_loader,
+                             logger, device, writer, wandb_run)
+            elif args.gen_model == "moe":
+                model_params = dict(cfg.model.composable)
+                model = GENERATION_MODEL_REGISTRY["moe"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable_architectures import moe_train
+                moe_train(cfg, dirs, model, ema, train_loader,
+                          logger, device, writer, wandb_run)
+            elif args.gen_model == "classifier_guided":
+                model_params = dict(cfg.model.classifier_guided)
+                model = GENERATION_MODEL_REGISTRY["classifier_guided"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable_architectures.classifier_guided_train import train as classifier_guided_train
+
+                classifier_guided_train(cfg, dirs, model, ema, train_loader,
+                                        logger, device, writer, wandb_run)
     except Exception as e:
         log_exception(logger, exception=e)
         send_failure_email(run_id=cfg.run_id, reason=str(e), epoch=0)

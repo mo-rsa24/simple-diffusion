@@ -28,11 +28,78 @@ def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate
     )
 
 from typing import Optional
-def build_dirs(cfg: Config) -> dict:
+
+
+# def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
+#     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
+#     experiment = f"experiment_{cfg.experiment_id}"
+#     run = f"run_{cfg.run_id}"
+#
+#     paths = {}
+#
+#     # 1) Root-level folders
+#     for key, attr in [
+#         ("ckpt", cfg.dirs.ckpt_dir),
+#         ("logs", cfg.dirs.logs_dir),
+#         ("tb", cfg.dirs.tensorboard_dir),
+#         ("wandb", cfg.dirs.wandb_dir),
+#     ]:
+#         abs_path = root_base / Path(attr) / cfg.task / experiment / run
+#         abs_path.mkdir(parents=True, exist_ok=True)
+#         paths[key] = abs_path
+#
+#     # 2) Results subfolders
+#     results_cfg = cfg.dirs.results_dir
+#     results_base = root_base / Path(results_cfg["base"]) / experiment / run
+#     results_base.mkdir(parents=True, exist_ok=True)
+#     paths["results_base"] = results_base
+#
+#     for name, rel_path in results_cfg.items():
+#         if name == "base":
+#             continue
+#         full_path = results_base / Path(rel_path).name
+#         full_path.mkdir(parents=True, exist_ok=True)
+#         paths[f"results_{name}"] = full_path
+#
+#     return paths
+
+from typing import Optional
+
+def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
+    if base_dir is not None:
+        base = Path(base_dir)
+        ckpt_dir = base / "checkpoints"
+        logs_dir = base / "logs"
+        tb_dir = logs_dir / "tb"
+        wandb_dir = logs_dir / "wandb"
+        for d in [ckpt_dir, logs_dir, tb_dir, wandb_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        paths = {
+            "ckpt": ckpt_dir,
+            "logs": logs_dir,
+            "tb": tb_dir,
+            "wandb": wandb_dir,
+        }
+
+        results_base = base / "results"
+        results_base.mkdir(parents=True, exist_ok=True)
+        paths["results_base"] = results_base
+
+        for name, rel_path in cfg.dirs.results_dir.items():
+            if name == "base":
+                continue
+            dest = results_base / Path(rel_path).name
+            dest.mkdir(parents=True, exist_ok=True)
+            paths[f"results_{name}"] = dest
+
+        return paths
+
     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
     experiment = f"experiment_{cfg.experiment_id}"
     run = f"run_{cfg.run_id}"
-    
+    task = cfg.task
+
     paths = {}
 
     # 1) Root-level folders
@@ -42,13 +109,13 @@ def build_dirs(cfg: Config) -> dict:
         ("tb", cfg.dirs.tensorboard_dir),
         ("wandb", cfg.dirs.wandb_dir),
     ]:
-        abs_path = root_base / Path(attr) / cfg.task / experiment / run
+        abs_path = root_base / Path(attr) / task / experiment / run
         abs_path.mkdir(parents=True, exist_ok=True)
         paths[key] = abs_path
 
     # 2) Results subfolders
     results_cfg = cfg.dirs.results_dir
-    results_base = root_base / Path(results_cfg["base"]) / experiment / run
+    results_base = root_base / Path(results_cfg["base"]) / task / experiment / run
     results_base.mkdir(parents=True, exist_ok=True)
     paths["results_base"] = results_base
 
@@ -60,6 +127,7 @@ def build_dirs(cfg: Config) -> dict:
         paths[f"results_{name}"] = full_path
 
     return paths
+
 
 def init_observers(cfg: Config, dirs: dict, task: str = "TB"):
     logger = init_logger(str(dirs["logs"]), log_to_stdout=True, log_level=cfg.logging.log_level)

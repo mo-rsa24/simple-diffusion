@@ -1,4 +1,4 @@
-seed: 42
+seed: 12
 
 dataset:
   data_dir: "./data"
@@ -16,7 +16,7 @@ model:
   type: unet
   vpsde:
     dim: 64
-    channels: 1
+    channels: 3
     dim_mults: [1,2,4]
     use_attention_at: [1]
     sde:
@@ -28,7 +28,7 @@ model:
     init_dim: 32
     out_dim: null
     dim_mults: [1,2,4]
-    channels: 1
+    channels: 3
     latent_dim: 64
     self_condition: false
     resnet_block_groups: 4
@@ -36,19 +36,33 @@ model:
   edm:
     dim: 64
     dim_mults: [1,2,4]
-    channels: 1
+    channels: 3
   slot:
     dim: 64
-    channels: 1
+    channels: 3
   composable:
     base_dim: 64
     channels: 3
+  comp_unet:
+    dim: 64
+    factors: 3
+    beta_schedule: linear
+  cascaded:
+    dim: 64
+  guided:
+    dim: 64
+    slots: 3
+  moe:
+    dim: 64
+  classifier_guided:
+    dim: 64
+    num_classes: 10
   vanilla:
     dim: 64
     init_dim: 64
     out_dim: null
     dim_mults: [1, 2, 4]
-    channels: 1
+    channels: 3
     self_condition: false
     resnet_block_groups: 4
     use_attention_at: [1]
@@ -72,7 +86,9 @@ training:
   epochs: 100
   log_every_step: 1
   log_every_epoch: 1
-  scaler: amp
+  save_every_step: 1
+  save_every_epoch: 1
+  resume_from: false
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD/vanilla"

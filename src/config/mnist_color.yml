@@ -18,29 +18,46 @@ model:
   vpsde:
     dim: 64
     channels: 1
-    dim_mults: [ 1,2,4 ]
-    use_attention_at: [ 1 ]
+    dim_mults: [1,2,4]
+    use_attention_at: [1]
     sde:
-      type: vp        # "vp" or "ve"
+      type: vp
       beta_min: 0.1
       beta_max: 20.0
   ldm:
     dim: 64
     init_dim: 32
     out_dim: null
-    dim_mults: [ 1, 2, 4 ]
+    dim_mults: [1,2,4]
     channels: 1
     latent_dim: 64
     self_condition: false
     resnet_block_groups: 4
-    use_attention_at: [ 1 ]
+    use_attention_at: [1]
   edm:
     dim: 64
-    dim_mults: [ 1, 2, 4 ]
+    dim_mults: [1,2,4]
     channels: 1
   slot:
     dim: 64
     channels: 1
+  composable:
+    base_dim: 64
+    channels: 3
+  comp_unet:
+    dim: 64
+    factors: 3
+    beta_schedule: linear
+  cascaded:
+    dim: 64
+  guided:
+    dim: 64
+    slots: 3
+  moe:
+    dim: 64
+  classifier_guided:
+    dim: 64
+    num_classes: 10
   vanilla:
     dim: 64
     init_dim: 64
@@ -69,6 +86,9 @@ training:
   epochs: 100
   log_every_step: 1 # 500
   log_every_epoch: 1 # 20
+  save_every_step: 1
+  save_every_epoch: 1
+  resume_from: false
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD/vanilla"

@@ -51,6 +51,11 @@ class ModelConfig:
     slot: Dict[str, Any]
     vanilla: Dict[str, Any]
     composable: Dict[str, Any]
+    comp_unet: Dict[str, Any]
+    cascaded: Dict[str, Any]
+    guided: Dict[str, Any]
+    moe: Dict[str, Any]
+    classifier_guided: Dict[str, Any]
 
 @dataclass
 class OptimizerConfig:

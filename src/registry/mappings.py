@@ -1,9 +1,11 @@
 # mappings.py (new file or at top of run.py)
 from src.dataset.MNIST import get_mnist_loaders
-from src.dataset.utils import get_separate_loader, get_composable_loaders
+from src.dataset.utils import get_separate_loader, get_composable_loaders, get_composable_separate_loader
 from src.models.classifier.digit_classifier import DigitClassifier
 from src.models.classifier.digit_color_bbox_classifier import DigitColorBBoxClassifier
 from src.models.classifier.digit_color_classifier import DigitColorClassifier
+from src.models.composable_architectures import CompositionalUNet, CascadedDiffusion, GuidedUNet, MixtureOfExperts, \
+    ClassifierGuidedUNet
 from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.edm.EDM import EDMUNet
 from src.models.ldm.autoencoder import SimpleConvEncoder, SimpleConvDecoder
@@ -63,6 +65,21 @@ GENERATION_MODEL_REGISTRY = {
     },
     "composable": {
         "unet": ComposableDiffusionModel
+    },
+    "comp_unet": {
+        "unet": CompositionalUNet
+    },
+    "cascaded": {
+        "unet": CascadedDiffusion
+    },
+    "guided": {
+        "unet": GuidedUNet
+    },
+    "moe": {
+        "unet": MixtureOfExperts
+    },
+    "classifier_guided": {
+        "unet": ClassifierGuidedUNet
     }
 }
 
@@ -70,5 +87,5 @@ DATASET_LOADERS = {
     "MNIST": lambda cfg, **kwargs: get_mnist_loaders(cfg, number=kwargs.get("number")),
     "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(cfg, number=kwargs.get("number"), task=kwargs.get("task", "classify")),
     "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(cfg, dataset="MNIST_BBOX", number=kwargs.get("number"), task=kwargs.get("task", "classify")),
-    "MNIST_COMPOSABLE": lambda cfg, **kwargs: get_composable_loaders(cfg, variant=kwargs.get("variant", "foreground")),
+    "MNIST_COMPOSABLE": lambda cfg, **kwargs: get_composable_separate_loader(cfg, number=kwargs.get("number")),
 }

@@ -381,7 +381,9 @@ def visualize_images(
 ):
     # --- Convert input to tensor ---
     if isinstance(data, Image.Image):
-        data = torch.from_numpy(np.array(data)).permute(2, 0, 1).float() / 255
+        data = torch.from_numpy(np.array(data)).unsqueeze(-1).permute(2, 0,
+                                                                      1).float() / 255 if data.mode == 'L' else torch.from_numpy(
+            np.array(data)).permute(2, 0, 1).float() / 255
     elif isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
 

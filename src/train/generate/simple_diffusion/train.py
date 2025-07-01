@@ -105,7 +105,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
                               wandb_tracker=wandb_run)
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
-
+                break
             avg_loss = running_loss / len(train_loader)
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
