@@ -132,7 +132,16 @@ def train(
         log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
         if val_loader and (epoch + 1) % eval_interval == 0:
             evaluate_multilabel(model, val_loader, device, criterion)
-            visualize_predictions(model, dirs, val_loader, device, epoch=epoch, n=4)
+            visualize_predictions(
+                model,
+                dirs,
+                val_loader,
+                device,
+                epoch=epoch,
+                n=4,
+                mean=(0.1307,),
+                std=(0.3081,)
+            )
     total_time = time.time() - start_time
     log_training_end(logger, total_time)
     alert_on_success(

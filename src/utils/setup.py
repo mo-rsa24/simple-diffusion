@@ -62,17 +62,23 @@ def build_dirs(cfg: Config) -> dict:
     return paths
 
 def init_observers(cfg: Config, dirs: dict, task: str = "TB"):
-    logger = init_logger(str(dirs["logs"]), log_to_stdout=True)
+    logger = init_logger(str(dirs["logs"]), log_to_stdout=True, log_level=cfg.logging.log_level)
     writer = None
     if cfg.logging.use_tensorboard:
-        from torch.utils.tensorboard import SummaryWriter
-        writer = SummaryWriter(str(dirs["logs"] / "tb"))
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+            writer = SummaryWriter(str(dirs["logs"] / "tb"))
+        except Exception as e:
+            logger.warning(f"TensorBoard unavailable: {e}")
     wandb_tracker = None
     if cfg.logging.use_wandb:
-        wandb_tracker = wandb.init(
-            project=f"chest-xray-{task}",
-            name=f"experiment_{cfg.experiment_id}_run_{cfg.run_id}",
-            config=cfg.__dict__
-        )
-        wandb.run.notes = f"CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0)}"
+        try:
+            wandb_tracker = wandb.init(
+                project=f"chest-xray-{task}",
+                name=f"experiment_{cfg.experiment_id}_run_{cfg.run_id}",
+                config=cfg.__dict__
+            )
+            wandb.run.notes = f"CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0)}"
+        except Exception as e:
+            logger.warning(f"WandB unavailable: {e}")
     return logger, writer, wandb_tracker

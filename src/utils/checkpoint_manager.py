@@ -4,7 +4,8 @@ import os
 import json
 import glob
 from pathlib import Path
-
+import random
+import numpy as np
 import torch
 from datetime import datetime
 from typing import Optional, Tuple, Any
@@ -146,7 +147,11 @@ class CheckpointManager:
             checkpoint["scheduler_state_dict"] = scheduler.state_dict()
         if global_step is not None:
             checkpoint["global_step"] = global_step
-
+        # RNG states for deterministic resume
+        checkpoint["torch_rng"] = torch.get_rng_state()
+        checkpoint["cuda_rng"] = torch.cuda.get_rng_state_all()
+        checkpoint["numpy_rng"] = np.random.get_state()
+        checkpoint["python_rng"] = random.getstate()
         # Save to disk
         try:
             torch.save(checkpoint, filepath)
@@ -277,6 +282,16 @@ class CheckpointManager:
             if "scheduler_state_dict" not in checkpoint:
                 raise KeyError(f"Checkpoint {filepath} missing scheduler state.")
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+        # Restore RNG states if present
+        if "torch_rng" in checkpoint:
+            torch.set_rng_state(checkpoint["torch_rng"])
+        if "cuda_rng" in checkpoint and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(checkpoint["cuda_rng"])
+        if "numpy_rng" in checkpoint:
+            np.random.set_state(checkpoint["numpy_rng"])
+        if "python_rng" in checkpoint:
+            random.setstate(checkpoint["python_rng"])
 
         if self.logger:
             self.logger.info(f"✅ Loaded checkpoint '{filepath}' at epoch {epoch_loaded}")

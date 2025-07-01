@@ -51,55 +51,73 @@ def train(cfg: Config,
                                  logger=logger)
 
     global_step = 0
-    for epoch in range(1, cfg.training.epochs + 1):
-        epoch_time = time.time()
-        log_epoch_start(epoch - 1, logger)
-        running = 0.0
+    start_epoch = 1
+    if cfg.training.resume_from:
+        try:
+            model, opt, _, last_epoch, global_step = ckpt_mgr.load_latest(
+                model, opt, None, map_location=device
+            )
+            start_epoch = last_epoch + 1
+            logger.info(f"Resuming from epoch {last_epoch}")
+        except Exception as e:
+            logger.warning(f"Could not resume training: {e}")
+    try:
+        for epoch in range(start_epoch, cfg.training.epochs + 1):
+            epoch_time = time.time()
+            log_epoch_start(epoch - 1, logger)
+            running = 0.0
 
-        for step, batch in enumerate(train_loader, 1):
-            x0 = batch["image"].to(device)
-            B  = x0.size(0)
-            sigma = schedule.sample(B, device)
+            for step, batch in enumerate(train_loader, 1):
+                x0 = batch["image"].to(device)
+                B = x0.size(0)
+                sigma = schedule.sample(B, device)
 
-            opt.zero_grad(set_to_none=True)
-            loss = edm_loss(model, x0, sigma, sigma_data)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            ema.update()
+                opt.zero_grad(set_to_none=True)
+                loss = edm_loss(model, x0, sigma, sigma_data)
+                scaler.scale(loss).backward()
+                scaler.step(opt)
+                scaler.update()
+                ema.update()
 
-            running += loss.item()
-            global_step += 1
+                running += loss.item()
+                global_step += 1
 
-            if global_step % cfg.training.log_every_step == 0:
-                log_batch(step, loss,
-                          cfg.optimizer.params.get("lr", 1e-4),
-                          logger, writer=writer, wandb_tracker=wandb_run)
+                if global_step % cfg.training.log_every_step == 0:
+                    log_batch(step, loss,
+                              cfg.optimizer.params.get("lr", 1e-4),
+                              logger, writer=writer, wandb_tracker=wandb_run)
+                if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
+                        ckpt_mgr.save(model, opt, None, epoch, global_step)
+
+            # epoch summary
+            avg = running / len(train_loader)
+            log_epoch_summary(logger, epoch, cfg.training.epochs,
+                              avg, epoch_time=time.time() - epoch_time)
+            log_json(logger, "Epoch Summary",
+                     epoch=epoch, train_loss=avg,
+                     duration=time.time() - epoch_time)
+
+            # preview samples
+            ema.apply_shadow()
+            shape = (
+                cfg.sampling.batch_size,
+                cfg.dataset.channels,
+                cfg.dataset.image_size,
+                cfg.dataset.image_size,
+            )
+            sampler_cfg = getattr(cfg.sampling, "edm_sampler", {}).get("params", {})
+            sample = edm_sampler(model, shape, **sampler_cfg)
+            ema.restore()
+
+            if epoch % cfg.training.log_every_epoch == 0:
+                visualize_epoch(sample, x0[:sample.size(0)], dirs,
+                                epoch=epoch, wandb_run=wandb_run, writer=writer)
+            if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 ckpt_mgr.save(model, opt, None, epoch, global_step)
-
-        # epoch summary
-        avg = running / len(train_loader)
-        log_epoch_summary(logger, epoch, cfg.training.epochs,
-                          avg, epoch_time=time.time() - epoch_time)
-        log_json(logger, "Epoch Summary",
-                 epoch=epoch, train_loss=avg,
-                 duration=time.time() - epoch_time)
-
-        # preview samples
-        ema.apply_shadow()
-        shape = (
-            cfg.sampling.batch_size,
-            cfg.dataset.channels,
-            cfg.dataset.image_size,
-            cfg.dataset.image_size,
-        )
-        sampler_cfg = getattr(cfg.sampling, "edm_sampler", {}).get("params", {})
-        sample = edm_sampler(model, shape, **sampler_cfg)
-        ema.restore()
-
-        if epoch % cfg.training.log_every_epoch == 0:
-            visualize_epoch(sample, x0[:sample.size(0)], dirs,
-                            epoch=epoch, wandb_run=wandb_run, writer=writer)
+    except Exception as e:
+        ckpt_mgr.save(model, opt, None, epoch, global_step)
+        logger.error(f"Training interrupted: {e}")
+        raise
 
     # training finished
     tot = time.time() - start

@@ -6,6 +6,9 @@ class TrainingConfig:
     epochs: int
     log_every_step: int
     log_every_epoch: int
+    save_every_step: int = 0
+    save_every_epoch: int = 1
+    resume_from: bool = False
 
 @dataclass
 class DirsConfig:
@@ -21,6 +24,7 @@ class DirsConfig:
 class LoggingConfig:
     use_tensorboard: bool
     use_wandb: bool
+    log_level: str = "INFO"
 
 @dataclass
 class ObservabilityConfig:

@@ -1,9 +1,6 @@
 import os
 import random
-from pathlib import Path
 import math
-from typing import Dict
-
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import numpy as np
@@ -109,7 +106,8 @@ import torch
 
 def save_side_by_side_images(real: torch.Tensor,
                              generated: torch.Tensor,
-                             side_by_side_dir: Path):
+                             side_by_side_dir: Path,
+                             input_range: str = "auto"):
     """
     Save paired real vs. generated images side by side.
     Supports both grayscale (1×H×W) and RGB (3×H×W) CHW tensors.
@@ -117,15 +115,28 @@ def save_side_by_side_images(real: torch.Tensor,
     n = min(len(real), len(generated))
     side_by_side_dir.mkdir(parents=True, exist_ok=True)
 
+    if input_range == "auto":
+        is_diffusion = generated.min() < 0
+    elif input_range == "diffusion":
+        is_diffusion = True
+    else:
+        is_diffusion = False
+
     for i in range(n):
         # 1) Pull out the i-th sample
         real_img = real[i].detach().cpu()
         gen_img  = generated[i].detach().cpu()
 
-        # 2) Normalize generated from [-1,1] → [0,1]
-        #    (your T.Lambda maps inputs to [-1,1], but model outputs can drift)
-        gen_img = gen_img.clamp(-1, 1)
-        gen_img = (gen_img + 1) / 2
+        def normalize_img(t: torch.Tensor) -> torch.Tensor:
+            if t.min() < 0 or is_diffusion:
+                t = t.clamp(-1, 1)
+                t = (t + 1) / 2
+            else:
+                t = t.clamp(0, 1)
+            return t
+
+        real_img = normalize_img(real_img)
+        gen_img  = normalize_img(gen_img)
 
         # 3) Convert CHW → HWC or HW depending on channels
         def chw_to_display(img: torch.Tensor):
@@ -157,11 +168,14 @@ def save_side_by_side_images(real: torch.Tensor,
         fig.savefig(side_by_side_dir / Path(f"sample_{i:03d}_comparison.png"))
         plt.close(fig)
 
-
-from pathlib import Path
-import matplotlib.pyplot as plt
-
-def visualize_predictions(model, dirs: dict, loader, device, epoch: int = None, n=9):
+def visualize_predictions(model,
+                          dirs: dict,
+                          loader,
+                          device,
+                          epoch: int = None,
+                          n: int = 9,
+                          mean: tuple = None,
+                          std: tuple = None):
     import torch
     model.eval()
     samples_dir = Path(dirs.get("results_samples")) / f"epoch_{epoch}"
@@ -187,6 +201,14 @@ def visualize_predictions(model, dirs: dict, loader, device, epoch: int = None, 
 
     for i in range(n):
         img = images[i]
+        if mean is not None and std is not None:
+            m = torch.tensor(mean).view(-1, 1, 1)
+            s = torch.tensor(std).view(-1, 1, 1)
+            img = img * s + m
+        elif img.min() < 0:
+            img = (img + 1) / 2
+        img = img.clamp(0, 1)
+
         if img.shape[0] == 1:  # grayscale
             img = img.squeeze(0)
         else:

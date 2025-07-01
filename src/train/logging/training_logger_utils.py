@@ -100,7 +100,9 @@ def visualize_epoch(generated: torch.Tensor, real: torch.Tensor,  dirs: Dict, ep
     samples_dir.mkdir(parents=True, exist_ok=True)
     # --- 1) Save each generated image individually ---
     for i, img in enumerate(generated):
-        save_image(img,  samples_dir / Path(f"{prefix}_{i:03d}.png"), normalize=True, value_range=(0, 1))
+        img = img.detach().cpu().clamp(-1, 1)
+        img = (img + 1) / 2  # map [-1,1] -> [0,1]
+        save_image(img, samples_dir / Path(f"{prefix}_{i:03d}.png"), normalize=False)
 
     # --- 2) Side-by-side comparisons (one per index) ---
     side_by_side_dir: Path = dirs.get("results_side_by_side") / Path(f"epoch_{epoch}")

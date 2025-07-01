@@ -41,78 +41,98 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
     global_step = 0
     start_epoch = 1
 
-    for epoch in range(start_epoch, cfg.training.epochs + 1):
-        epoch_start = time.time()
-        log_epoch_start(epoch - 1, logger)
+    if cfg.training.resume_from:
+        try:
+            model, optimizer, scheduler, last_epoch, global_step = checkpoint_manager.load_latest(
+                model, optimizer, scheduler, map_location=device
+            )
+            start_epoch = last_epoch + 1
+            logger.info(f"Resuming from epoch {last_epoch}")
+        except Exception as e:
+            logger.warning(f"Could not resume training: {e}")
 
-        running_loss = 0.0
-        for step, train_batch in enumerate(train_loader, 1):
-            batch = train_batch['image']
-            batch_size = int(batch.shape[0])
-            batch = batch.to(device)
-            noise = torch.randn_like(batch)
-            t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
+    try:
+        for epoch in range(start_epoch, cfg.training.epochs + 1):
+            epoch_start = time.time()
+            log_epoch_start(epoch - 1, logger)
 
-            optimizer.zero_grad()
+            running_loss = 0.0
+            for step, train_batch in enumerate(train_loader, 1):
+                batch = train_batch['image']
+                batch_size = int(batch.shape[0])
+                batch = batch.to(device)
+                noise = torch.randn_like(batch)
+                t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
 
-            x_noisy = q_sample(
-                x_start=batch,
-                t=t,
-                noise=noise,
+                optimizer.zero_grad()
+
+                x_noisy = q_sample(
+                    x_start=batch,
+                    t=t,
+                    noise=noise,
+                    timesteps=cfg.diffusion.timesteps,
+                    beta_start=cfg.diffusion.beta_start,
+                    beta_end=cfg.diffusion.beta_end,
+                )
+                with autocast():
+                  pred_noise = model(x_noisy, t)
+
+                # 3) cast back to FP32 for loss
+                pred_noise = pred_noise.float()
+                if cfg.diffusion.loss_type == 'l1':
+                    loss = F.l1_loss(noise, pred_noise)
+                elif cfg.diffusion.loss_type == 'l2':
+                    loss = F.mse_loss(noise, pred_noise)
+                elif cfg.diffusion.loss_type == "huber":
+                    loss = F.smooth_l1_loss(noise, pred_noise)
+
+                # backward with the scaler
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                # optional: free any cached fragments
+
+                ema.update()
+                torch.cuda.empty_cache()
+
+                running_loss += loss.item()
+                global_step += 1
+
+                # ── Periodic Logging ────────────────────────────────
+                if global_step % cfg.training.log_every_step == 0:
+                    log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer,
+                              wandb_tracker=wandb_run)
+                if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
+                    checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
+
+            avg_loss = running_loss / len(train_loader)
+            epoch_time = time.time() - epoch_start
+            log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
+            log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
+            real_batch = batch[:cfg.sampling.batch_size].to(device)  # take first 16 real images
+            ema.apply_shadow()
+            generated = generate_batch(
+                model,
+                image_size=cfg.dataset.image_size,
+                batch_size=cfg.sampling.batch_size,
+                channels=cfg.dataset.channels,
                 timesteps=cfg.diffusion.timesteps,
                 beta_start=cfg.diffusion.beta_start,
                 beta_end=cfg.diffusion.beta_end,
             )
-            with autocast():
-              pred_noise = model(x_noisy, t)
+            ema.restore()
+            if epoch % cfg.training.log_every_epoch == 0:
+                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
 
-            # 3) cast back to FP32 for loss
-            pred_noise = pred_noise.float()
-            if cfg.diffusion.loss_type == 'l1':
-                loss = F.l1_loss(noise, pred_noise)
-            elif cfg.diffusion.loss_type == 'l2':
-                loss = F.mse_loss(noise, pred_noise)
-            elif cfg.diffusion.loss_type == "huber":
-                loss = F.smooth_l1_loss(noise, pred_noise)
-
-            # backward with the scaler
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-
-            # optional: free any cached fragments
-
-            ema.update()
-            torch.cuda.empty_cache()
-
-            running_loss += loss.item()
-            global_step += 1
-
-            # ── Periodic Logging ────────────────────────────────
-            if global_step % cfg.training.log_every_step == 0:
-              log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer, wandb_tracker=wandb_run)
-              checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
-
-        avg_loss = running_loss / len(train_loader)
-        epoch_time = time.time() - epoch_start
-        log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
-        log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
-        real_batch = batch[:cfg.sampling.batch_size].to(device)  # take first 16 real images
-        ema.apply_shadow()
-        generated = generate_batch(
-            model,
-            image_size=cfg.dataset.image_size,
-            batch_size=cfg.sampling.batch_size,
-            channels=cfg.dataset.channels,
-            timesteps=cfg.diffusion.timesteps,
-            beta_start=cfg.diffusion.beta_start,
-            beta_end=cfg.diffusion.beta_end,
-        )
-        ema.restore()
-        if epoch % cfg.training.log_every_epoch == 0:
-            visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
+            if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
+                checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+    except Exception as e:
+        checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
+        logger.error(f"Training interrupted: {e}")
+        raise
     total_time = time.time() - start_time
     log_training_end(logger, total_time)
     alert_on_success(

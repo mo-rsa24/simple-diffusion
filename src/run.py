@@ -7,12 +7,6 @@ from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GE
 from src.task import classify_task
 from src.train.logging.training_logger_utils import log_exception
 from src.utils.setup import load_config, build_dirs, init_observers
-import random
-import numpy as np
-
-random.seed(0)
-np.random.seed(0)
-torch.manual_seed(0)
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -30,6 +24,8 @@ def parse_args():
     p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm", "slot", "edm", "vpsde"], default="vanilla",  help="Which diffusion model architecture to use.")
     p.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     p.add_argument("--use_tensorboard", action="store_true", help="Enable TensorBoard logging")
+    p.add_argument("--resume", action="store_true", help="Resume training from latest checkpoint")
+    p.add_argument("--log-level", type=str, default=None, help="Logging level")
     p.add_argument(
         "--dry-run", action="store_true",
         help="Print merged config and exit"
@@ -40,8 +36,19 @@ if __name__ == "__main__":
     args = parse_args()
     config_path = f"src/config/{args.dataset.lower()}.yml"
     cfg = load_config(config_path, args.experiment_id, args.run_id, task=args.task)
+    if args.log_level:
+        cfg.logging.log_level = args.log_level
+    cfg.logging.use_wandb = args.use_wandb or cfg.logging.use_wandb
+    cfg.logging.use_tensorboard = args.use_tensorboard or cfg.logging.use_tensorboard
+    cfg.training.resume_from = args.resume or cfg.training.resume_from
+    from src.utils.env import set_global_seeds
+
+    set_global_seeds(cfg.seed)
     dirs = build_dirs(cfg)
     logger, writer, wandb_run = init_observers(cfg, dirs)
+    if args.dry_run:
+        print(cfg)
+        exit(0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     try:
         loaders = DATASET_LOADERS[args.dataset](
