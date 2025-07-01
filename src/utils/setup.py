@@ -27,8 +27,6 @@ def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate
         sampling      = SamplingConfig(**data["sampling"])
     )
 
-from typing import Optional
-
 
 # def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
 #     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
@@ -65,7 +63,7 @@ from typing import Optional
 
 from typing import Optional
 
-def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
+def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "vanilla") -> dict:
     if base_dir is not None:
         base = Path(base_dir)
         ckpt_dir = base / "checkpoints"
@@ -109,13 +107,13 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
         ("tb", cfg.dirs.tensorboard_dir),
         ("wandb", cfg.dirs.wandb_dir),
     ]:
-        abs_path = root_base / Path(attr) / task / experiment / run
+        abs_path = root_base / Path(attr) / task / experiment / run  / gen_modeL
         abs_path.mkdir(parents=True, exist_ok=True)
         paths[key] = abs_path
 
     # 2) Results subfolders
     results_cfg = cfg.dirs.results_dir
-    results_base = root_base / Path(results_cfg["base"]) / task / experiment / run
+    results_base = root_base / Path(results_cfg["base"]) / task / experiment / run / gen_modeL
     results_base.mkdir(parents=True, exist_ok=True)
     paths["results_base"] = results_base
 

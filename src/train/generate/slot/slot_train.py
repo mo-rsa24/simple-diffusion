@@ -5,7 +5,7 @@ from torch.cuda.amp import autocast, GradScaler
 from datetime import timedelta
 import time
 import torch.nn.functional as F
-from src.models.ldm.diffusion import latent_p_losses, latent_sample
+from src.config.configs import Config
 from src.utils.checkpoint_manager import CheckpointManager
 from src.train.logging.training_logger_utils import (
     log_training_start, log_epoch_start, log_batch, log_epoch_summary,
@@ -14,10 +14,10 @@ from src.train.logging.training_logger_utils import (
 from src.monitoring.email_alert_mailtrap import alert_on_success
 
 
-def train(cfg, dirs, model, ema, train_loader, logger, device, writer=None, wandb_run=None):
+def train(cfg: Config, dirs, model, ema, train_loader, logger, device, writer=None, wandb_run=None):
     # Combine model, encoder, decoder params if you want to do end-to-end finetuning (otherwise, freeze encoder/decoder)
     optimizer = torch.optim.Adam(model.parameters(), **cfg.optimizer.params)
-    noise_scale = cfg.model.params.get("noise_scale", 0.1)
+    noise_scale = cfg.model.slot.get("noise_scale", 0.1)
     scaler = GradScaler()
     start_time = time.time()
     log_training_start(

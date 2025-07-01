@@ -41,6 +41,7 @@ model:
   slot:
     dim: 64
     channels: 1
+    noise_scale: 0.1
   composable:
     base_dim: 64
     channels: 3

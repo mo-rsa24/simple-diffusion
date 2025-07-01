@@ -76,7 +76,7 @@ if __name__ == "__main__":
     elif args.resume and os.environ.get("BASE_DIR"):
         base_dir = Path(os.environ["BASE_DIR"])  # default from launcher
 
-    dirs = build_dirs(cfg, base_dir=base_dir)
+    dirs = build_dirs(cfg, base_dir=base_dir, gen_modeL=args.gen_model)
     if args.checkpoint_dir:
         dirs["ckpt"] = Path(args.checkpoint_dir)
     if args.log_dir:

@@ -25,7 +25,7 @@ model:
       beta_max: 20.0
   ldm:
     dim: 64
-    init_dim: 32
+    init_dim: 64
     out_dim: null
     dim_mults: [1,2,4]
     channels: 3
