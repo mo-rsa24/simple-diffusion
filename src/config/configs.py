@@ -40,6 +40,7 @@ class DiffusionConfig:
     beta_start: float
     ema_decay: float
     beta_end: float
+    beta_schedule: str = "linear"
 
 @dataclass
 class ModelConfig:
@@ -49,6 +50,7 @@ class ModelConfig:
     edm: Dict[str, Any]
     slot: Dict[str, Any]
     vanilla: Dict[str, Any]
+    composable: Dict[str, Any]
 
 @dataclass
 class OptimizerConfig:
@@ -74,6 +76,7 @@ class SamplingConfig:
     channels: int
     blit: bool
     repeat_delay: float
+    edm_sampler: Dict[str, Any]
 
 @dataclass
 class Config:

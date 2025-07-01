@@ -27,10 +27,10 @@ def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate
         sampling      = SamplingConfig(**data["sampling"])
     )
 
-
+from typing import Optional
 def build_dirs(cfg: Config) -> dict:
     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
-    experiment = f"experiment_{cfg.experiment_id}_{cfg.task}"
+    experiment = f"experiment_{cfg.experiment_id}"
     run = f"run_{cfg.run_id}"
     
     paths = {}
@@ -42,7 +42,7 @@ def build_dirs(cfg: Config) -> dict:
         ("tb", cfg.dirs.tensorboard_dir),
         ("wandb", cfg.dirs.wandb_dir),
     ]:
-        abs_path = root_base / Path(attr) / experiment / run
+        abs_path = root_base / Path(attr) / cfg.task / experiment / run
         abs_path.mkdir(parents=True, exist_ok=True)
         paths[key] = abs_path
 

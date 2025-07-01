@@ -30,9 +30,8 @@ COLOR=""
 NUMBER=""
 GEN_MODEL=""
 JOB_NAME=""
-OUTPUT_DIR=""
-ERROR_DIR=""
 PARTITION=""
+RESUME=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -43,11 +42,10 @@ while [[ "$#" -gt 0 ]]; do
         --color|-c) COLOR="$2"; shift ;;
         --number|-n) NUMBER="$2"; shift ;;
         --gen_model|-g) GEN_MODEL="$2"; shift ;;
+        --resume) RESUME="true" ;;
         --use_wandb) USE_WANDB="true" ;;
         --use_tensorboard) USE_TB="true" ;;
         --job-name) JOB_NAME="$2"; shift ;;
-        --output) OUTPUT_DIR="$2"; shift ;;
-        --error) ERROR_DIR="$2"; shift ;;
         --partition) PARTITION="$2"; shift ;;
         *) error "Unknown parameter: $1"; exit 1 ;;
     esac
@@ -85,20 +83,19 @@ fi
 
 # --- Job Name Default ---
 if [[ -z "$JOB_NAME" ]]; then
-    JOB_NAME="${EXP_ID}_r${RUN_ID}"
+    JOB_NAME="${EXP_ID}_${RUN_ID}_${TASK:-default}"
     info "Job name not specified. Using default: $JOB_NAME"
 fi
 
-# --- Output/Error Dir Defaults ---
-if [[ -z "$OUTPUT_DIR" ]]; then
-    OUTPUT_DIR="/gluster/mmolefe/PhD/simple-diffusion/jobs/${JOB_NAME}"
-    info "Output directory not specified. Using default: $OUTPUT_DIR"
+BASE_DIR="/gluster/mmolefe/PhD/simple-diffusion/jobs/${JOB_NAME}"
+mkdir -p "$BASE_DIR/checkpoints" "$BASE_DIR/logs" "$BASE_DIR/results"
+
+# --- Check for existing checkpoints to infer resume ---
+CKPT_DIR="$BASE_DIR/checkpoints"
+if [[ "$RESUME" != "true" && -n $(ls -1 "$CKPT_DIR"/epoch_*.ckpt 2>/dev/null | head -n 1) ]]; then
+    RESUME="true"
+    info "Found checkpoints in $CKPT_DIR - enabling resume"
 fi
-if [[ -z "$ERROR_DIR" ]]; then
-    ERROR_DIR="/gluster/mmolefe/PhD/simple-diffusion/jobs/${JOB_NAME}"
-    info "Error directory not specified. Using default: $ERROR_DIR"
-fi
-mkdir -p "$OUTPUT_DIR" "$ERROR_DIR"
 
 # --- Summary Table ---
 echo -e "\n${DIM}────────── Experiment Launch Summary ──────────${NC}"
@@ -111,8 +108,7 @@ print_kv "Number" "${NUMBER:-<none>}"
 print_kv "Generate Model" "${GEN_MODEL:-<none>}"
 print_kv "Partition" "$PARTITION"
 print_kv "Job Name" "$JOB_NAME"
-print_kv "Output Dir" "$OUTPUT_DIR"
-print_kv "Error Dir" "$ERROR_DIR"
+print_kv "Base Dir" "$BASE_DIR"
 print_kv "Use WandB" "${USE_WANDB:-<none>}"
 print_kv "Use TensorBoard" "${USE_TB:-<none>}"
 echo -e "${DIM}───────────────────────────────────────────────${NC}\n"
@@ -120,10 +116,10 @@ echo -e "${DIM}─────────────────────�
 # --- Final SLURM Command Construction ---
 SBATCH_CMD="sbatch --job-name=\"$JOB_NAME\" \
     --partition=\"$PARTITION\" \
-    --output=\"$OUTPUT_DIR/%x_%j.out\" \
-    --error=\"$ERROR_DIR/%x_%j.err\" \
-    src/scripts/run_job.slurm \
-    \"$EXP_ID\" \"$RUN_ID\" \"$DATASET\" \"$TASK\" \"$COLOR\" \"$NUMBER\" \"GEN_MODEL\" \"$USE_WANDB\" \"$USE_TB\""
+    --output=\"$BASE_DIR/logs/slurm-%j.out\" \
+    --error=\"$BASE_DIR/logs/slurm-%j.err\" \
+    --export=ALL,BASE_DIR=$BASE_DIR,EXP_ID=$EXP_ID,RUN_ID=$RUN_ID,DATASET=$DATASET,TASK=$TASK,COLOR=$COLOR,NUMBER=$NUMBER,GEN_MODEL=$GEN_MODEL,USE_WANDB=$USE_WANDB,USE_TB=$USE_TB,RESUME=$RESUME \
+    src/scripts/run_job.slurm"
 
 info "Submitting job with the following command:"
 echo -e "${CYAN}$SBATCH_CMD${NC}" | tee -a "$LOG_FILE"

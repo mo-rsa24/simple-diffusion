@@ -4,6 +4,7 @@ from src.dataset.utils import get_separate_loader, get_composable_loaders
 from src.models.classifier.digit_classifier import DigitClassifier
 from src.models.classifier.digit_color_bbox_classifier import DigitColorBBoxClassifier
 from src.models.classifier.digit_color_classifier import DigitColorClassifier
+from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.edm.EDM import EDMUNet
 from src.models.ldm.autoencoder import SimpleConvEncoder, SimpleConvDecoder
 from src.models.slot_diffusion.SlotDiffusionUNet import SlotDiffusionUNet
@@ -59,6 +60,9 @@ GENERATION_MODEL_REGISTRY = {
     },
     "edm":{
         "unet": EDMUNet
+    },
+    "composable": {
+        "unet": ComposableDiffusionModel
     }
 }
 

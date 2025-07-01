@@ -7,9 +7,21 @@ from pathlib import Path
 import random
 import numpy as np
 import torch
+import subprocess
 from datetime import datetime
 from typing import Optional, Tuple, Any
 
+def _get_git_commit_hash() -> str:
+    """Return the short git commit hash if available."""
+    try:
+        return subprocess.check_output([
+            "git",
+            "rev-parse",
+            "--short",
+            "HEAD",
+        ]).decode().strip()
+    except Exception:
+        return "unknown"
 
 class CheckpointManager:
     """
@@ -167,6 +179,8 @@ class CheckpointManager:
             "filepath": filepath,
             "epoch": epoch,
             "timestamp": datetime.utcnow().isoformat(),
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            "git_commit": _get_git_commit_hash(),
         }
         if global_step is not None:
             entry["global_step"] = global_step

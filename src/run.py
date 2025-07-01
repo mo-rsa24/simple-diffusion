@@ -1,7 +1,8 @@
 import argparse
+import os
+from pathlib import Path
 import torch
 from src.models.vanilla.ema import EMA
-
 from src.monitoring.alert_notifier import send_failure_email
 from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GENERATION_MODEL_REGISTRY
 from src.task import classify_task
@@ -14,18 +15,23 @@ def parse_args():
     p.add_argument("--run_id", "-r", type=str, required=True)
     p.add_argument(
         "--dataset", "-d",
-        choices=["TB", "PNEUMONIA", "MNIST", "MNIST_COLOR", "MNIST_BBOX"],
+        choices=["TB", "PNEUMONIA", "MNIST", "MNIST_COLOR", "MNIST_BBOX", "MNIST_COMPOSABLE"],
         required=True,
         help="Which dataset/config to use"
     )
     p.add_argument("--task", "-t", type=str, choices=["generate", "classify"], default="generate")
     p.add_argument("--color", "-c", type=str, choices=["fg", "bg"], default="fg")
     p.add_argument("--number", "-n", type=int, default=None)
-    p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm", "slot", "edm", "vpsde"], default="vanilla",  help="Which diffusion model architecture to use.")
+    p.add_argument("--gen_model", "-g", type=str, choices=["vanilla", "ldm", "slot", "edm", "vpsde", "composable"],
+                   default="vanilla", help="Which diffusion model architecture to use.")
     p.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     p.add_argument("--use_tensorboard", action="store_true", help="Enable TensorBoard logging")
     p.add_argument("--resume", action="store_true", help="Resume training from latest checkpoint")
+    p.add_argument("--checkpoint-dir", type=str, default=None, help="Directory for checkpoints")
+    p.add_argument("--log-dir", type=str, default=None, help="Directory for training logs")
+    p.add_argument("--array_index", type=int, default=None, help="SLURM array task index")
     p.add_argument("--log-level", type=str, default=None, help="Logging level")
+
     p.add_argument(
         "--dry-run", action="store_true",
         help="Print merged config and exit"
@@ -44,8 +50,22 @@ if __name__ == "__main__":
     from src.utils.env import set_global_seeds
 
     set_global_seeds(cfg.seed)
-    dirs = build_dirs(cfg)
+    base_dir = None
+    if args.checkpoint_dir:
+        base_dir = Path(args.checkpoint_dir).resolve().parent
+    elif args.log_dir:
+        base_dir = Path(args.log_dir).resolve().parent
+    elif args.resume and os.environ.get("BASE_DIR"):
+        base_dir = Path(os.environ["BASE_DIR"])  # default from launcher
+
+    dirs = build_dirs(cfg, base_dir=base_dir)
+    if args.checkpoint_dir:
+        dirs["ckpt"] = Path(args.checkpoint_dir)
+    if args.log_dir:
+        dirs["logs"] = Path(args.log_dir)
     logger, writer, wandb_run = init_observers(cfg, dirs)
+    if args.array_index is not None:
+        logger.info(f"SLURM array index: {args.array_index}")
     if args.dry_run:
         print(cfg)
         exit(0)
@@ -115,6 +135,14 @@ if __name__ == "__main__":
                 from src.train.generate.edm.edm_train import train as edm_train
                 edm_train(cfg, dirs, model, ema, train_loader,
                           logger, device, writer, wandb_run)
+            elif args.gen_model == "composable":
+                model_params = dict(cfg.model.composable)
+                model = GENERATION_MODEL_REGISTRY["composable"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.composable.composable_train import train as composable_train
+
+                composable_train(cfg, dirs, model, ema, train_loader,
+                                 logger, device, writer, wandb_run)
     except Exception as e:
         log_exception(logger, exception=e)
         send_failure_email(run_id=cfg.run_id, reason=str(e), epoch=0)

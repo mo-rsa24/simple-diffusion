@@ -3,7 +3,7 @@
 import logging, os, json
 from datetime import datetime
 
-def init_logger(log_dir, filename="training.log", log_to_stdout=False):
+def init_logger(log_dir, filename="training.log", log_to_stdout=False, log_level="INFO"):
     os.makedirs(log_dir, exist_ok=True)
 
     # --- Clear previous logs ---
@@ -15,13 +15,15 @@ def init_logger(log_dir, filename="training.log", log_to_stdout=False):
     # --- Init logger ---
     full_path = os.path.join(log_dir, filename)
     logger = logging.getLogger("experiment_logger")
-    logger.setLevel(logging.DEBUG)
+    level = getattr(logging, str(log_level).upper(), logging.INFO)
+    logger.setLevel(level)
     logger.handlers = []  # Reset handlers (important!)
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
     # File logger
     fh = logging.FileHandler(full_path, mode='w')  # 'w' = overwrite
+    fh.setLevel(level)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
@@ -51,13 +53,14 @@ def init_logger(log_dir, filename="training.log", log_to_stdout=False):
             self.flush()
 
     json_handler = JSONLinesHandler(os.path.join(log_dir, "training.jsonl"), mode='w')
+    json_handler.setLevel(level)
     logger.addHandler(json_handler)
 
     # Console logger
     if log_to_stdout:
         ch = logging.StreamHandler()
         ch.setFormatter(formatter)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(level)
         logger.addHandler(ch)
 
     logger.info("🧠 Logger initialized (cleared previous logs)")
