@@ -62,7 +62,7 @@ def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foregr
         ])
     elif task == "generate":
         transform = transforms.Compose([
-            transforms.ToTensor(),
+            transforms.ToTensor(), # (0,1) -> [-1, 1]
             transforms.Lambda(lambda x: x * 2. - 1.)
         ])
     if dataset == "MNIST_BBOX":
