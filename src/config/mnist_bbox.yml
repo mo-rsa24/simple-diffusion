@@ -91,7 +91,7 @@ training:
   resume_from: false
 
 dirs:
-  cluster_base: "/gluster/mmolefe/PhD/vanilla"
+  cluster_base: "/gluster/mmolefe/PhD"
   local_base: .
   ckpt_dir: "./checkpoints"
   logs_dir: "./logs"
