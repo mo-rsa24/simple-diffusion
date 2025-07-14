@@ -94,7 +94,7 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "va
         return paths
 
     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
-    experiment = f"experiment_{cfg.experiment_id}"
+    experiment = f"{cfg.experiment_id}"
     run = f"run_{cfg.run_id}"
     task = cfg.task
 
@@ -107,13 +107,13 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "va
         ("tb", cfg.dirs.tensorboard_dir),
         ("wandb", cfg.dirs.wandb_dir),
     ]:
-        abs_path = root_base / Path(attr) / task / experiment / run  / gen_modeL
+        abs_path = root_base / "simple-diffusion" / experiment / run  / task / gen_modeL
         abs_path.mkdir(parents=True, exist_ok=True)
         paths[key] = abs_path
 
     # 2) Results subfolders
     results_cfg = cfg.dirs.results_dir
-    results_base = root_base / Path(results_cfg["base"]) / task / experiment / run / gen_modeL
+    results_base = root_base / 'simple-diffusion' / experiment / run  / task / gen_modeL / Path(results_cfg["base"])
     results_base.mkdir(parents=True, exist_ok=True)
     paths["results_base"] = results_base
 

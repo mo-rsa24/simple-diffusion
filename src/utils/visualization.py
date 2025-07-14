@@ -372,7 +372,7 @@ def tsne_plot(model, loader, n=1000, zoom=0.5, perplexity=30, seed=42, save_path
 def visualize_images(
     data,
     num_images: int = 4,
-    denormalize: bool = False,
+    denormalize: bool = True,
     mean: list = [0.5],
     std: list = [0.5],
     save_path: str = None,
