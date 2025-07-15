@@ -18,6 +18,7 @@ from src.utils.checkpoint_manager import CheckpointManager
 from src.models.vanilla.diffusion import generate_batch
 from src.utils.calculations import q_sample
 from src.models.vanilla.ema import EMA
+from src.utils.sampling import ddpm_sampler
 
 
 def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, device, writer=None, wandb_run=None):
@@ -91,29 +92,19 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time)
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
-
-            real_batch = x[: cfg.sampling.batch_size]
-            bsz = real_batch.size(0)
-            noise = torch.randn_like(real_batch)
-            t = torch.randint(0, cfg.diffusion.timesteps, (bsz,), device=device).long()
-            x_noisy = q_sample(x, t, noise,
-                               timesteps=cfg.diffusion.timesteps,
-                               beta_start=cfg.diffusion.beta_start,
-                               beta_end=cfg.diffusion.beta_end)
-            conds = [batch.get("digit_label", None), batch.get("color_label", None), batch.get("bbox_label", None)]
+            model.eval()
+            real_batch_data = next(iter(train_loader))
+            real_batch = real_batch_data['image'].to(device)
+            conds = [
+                real_batch_data.get("digit_label", None),
+                real_batch_data.get("color_label", None),
+                real_batch_data.get("bbox_label", None)
+            ]
             conds = [c.to(device) if torch.is_tensor(c) else None for c in conds]
-            pred = model(x_noisy, t, conds)
-            generated = x_noisy - pred
-            ema.apply_shadow()
-            # Please check here: generated = generate_batch(lambda x_, t_: model(x_, t_, conds),
-            #                            image_size=cfg.dataset.image_size,
-            #                            batch_size=cfg.sampling.batch_size,
-            #                            channels=cfg.dataset.channels,
-            #                            timesteps=cfg.diffusion.timesteps,
-            #                            beta_start=cfg.diffusion.beta_start,
-            #                            beta_end=cfg.diffusion.beta_end,
-            #                            device=device)
-            ema.restore()
+            for i in range(len(conds)):
+                if conds[i] is not None:
+                    conds[i] = conds[i][:cfg.sampling.batch_size]
+            generated = ddpm_sampler(model, cfg, device, conds)
             if epoch % cfg.training.log_every_epoch == 0:
                 visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run=wandb_run, writer=writer)
 
@@ -121,6 +112,7 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+            model.train()
     except Exception as e:
         ckpt_mgr.save(model, optimizer, None, epoch, global_step)
         logger.error(f"Training interrupted: {e}")

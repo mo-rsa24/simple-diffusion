@@ -1,0 +1,378 @@
+import torch
+from tqdm import tqdm
+import torch.nn.functional as F
+
+
+def get_diffusion_constants(cfg, device):
+    """Helper function to get all diffusion schedule constants."""
+    beta_start = cfg.diffusion.beta_start
+    beta_end = cfg.diffusion.beta_end
+    timesteps = cfg.diffusion.timesteps
+
+    betas = torch.linspace(beta_start, beta_end, timesteps, device=device)
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, axis=0)
+    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+    posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
+
+    return {
+        "betas": betas,
+        "alphas": alphas,
+        "alphas_cumprod": alphas_cumprod,
+        "posterior_variance": posterior_variance,
+    }
+
+
+@torch.no_grad()
+def ddpm_sampler(model, cfg, device, conds=None):
+    """
+    Standard DDPM sampler for noise-prediction models like UNet and CompositionalUNet.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    betas = constants["betas"]
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+    timesteps = cfg.diffusion.timesteps
+
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device)
+
+    for i in tqdm(reversed(range(timesteps)), desc="DDPM Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        predicted_noise = model(img, t, conds)
+
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            posterior_variance_t = constants["posterior_variance"][i]
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    return img
+
+
+@torch.no_grad()
+def vpsde_sampler(model, cfg, device, conds=None, corrector_steps=1, snr=0.15):
+    """
+    Sampler for VP-SDE score-based models (e.g., ScoreSdeUNet).
+    Uses a predictor-corrector loop.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    betas = constants["betas"]
+    timesteps = cfg.diffusion.timesteps
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device)
+
+    for i in tqdm(reversed(range(timesteps)), desc="VPSDE Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # --- Predictor Step (Reverse SDE) ---
+        beta_t = betas[i]
+        score = model(img, t, conds)
+        drift = -0.5 * beta_t * img
+        diffusion = torch.sqrt(beta_t)
+        drift = drift - diffusion ** 2 * score
+        img = img + drift
+        if i != 0:
+            img += diffusion * torch.randn_like(img)
+
+        # --- Corrector Step (Langevin Dynamics) ---
+        for _ in range(corrector_steps):
+            noise = torch.randn_like(img)
+            grad = model(img, t, conds)
+            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            noise_norm = torch.norm(noise.reshape(noise.shape[0], -1), dim=-1).mean()
+            step_size = 2 * (snr * noise_norm / grad_norm) ** 2
+            img = img + step_size * grad + torch.sqrt(2 * step_size) * noise
+
+    return img
+
+
+@torch.no_grad()
+def edm_sampler(model, cfg, device, conds=None, s_churn=0., s_min=0., s_max=float('inf'), s_noise=1.):
+    """
+    Sampler for EDM models, which predict the denoised image x_0.
+    Uses an ODE solver approach with a sigma schedule.
+    """
+    # EDM uses a sigma schedule instead of beta/alpha
+    num_steps = cfg.diffusion.timesteps
+    sigma_min = cfg.diffusion.sigma_min
+    sigma_max = cfg.diffusion.sigma_max
+    rho = 7.0  # A hyperparameter for the sigma schedule
+
+    sigmas = torch.from_numpy(
+        (sigma_max ** (1 / rho) + torch.arange(num_steps) / (num_steps - 1) * (
+                    sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
+    ).to(device)
+
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device) * sigmas[0]
+
+    for i in tqdm(range(num_steps - 1), desc="EDM Sampling"):
+        sigma_cur = sigmas[i]
+        sigma_next = sigmas[i + 1]
+
+        t = torch.full((batch_size,), i, device=device,
+                       dtype=torch.long)  # EDM models might still use integer timesteps
+
+        # Predict the denoised image
+        denoised = model(img, t, conds)
+
+        # ODE step (Heun's method)
+        d = (img - denoised) / sigma_cur
+        img_next = img + d * (sigma_next - sigma_cur)
+
+        # Apply second-order correction
+        if i < num_steps - 2:
+            t_next = torch.full((batch_size,), i + 1, device=device, dtype=torch.long)
+            denoised_next = model(img_next, t_next, conds)
+            d_next = (img_next - denoised_next) / sigma_next
+            img_next = img + (d + d_next) * ((sigma_next - sigma_cur) / 2)
+
+        img = img_next
+
+    return img
+
+
+@torch.no_grad()
+def composable_sampler(model, cfg, device, conds_list, weights):
+    """
+    Sampler for ComposableDiffusionModel.
+    Combines noise predictions from multiple conditions.
+    `conds_list`: A list of condition lists, e.g., [[cond_color], [cond_digit]].
+    `weights`: A list of weights for combining the noise predictions.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    betas = constants["betas"]
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+    timesteps = cfg.diffusion.timesteps
+
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device)
+
+    for i in tqdm(reversed(range(timesteps)), desc="Composable Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # Predict noise for each condition and combine them
+        total_predicted_noise = torch.zeros_like(img)
+        for conds, weight in zip(conds_list, weights):
+            total_predicted_noise += weight * model(img, t, conds)
+
+        predicted_noise = total_predicted_noise
+
+        # Standard DDPM update step
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+        model_mean = coeff_img * (img - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            posterior_variance_t = constants["posterior_variance"][i]
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    return img
+
+
+@torch.no_grad()
+def cascaded_sampler(base_model, super_res_model, cfg_base, cfg_super_res, device, conds=None):
+    """
+    Sampler for a two-stage cascaded diffusion pipeline.
+    """
+    # 1. Generate low-resolution image with the base model
+    print("--- Generating low-resolution base image ---")
+    low_res_img = ddpm_sampler(base_model, cfg_base, device, conds)
+
+    # 2. Upsample it to the target resolution
+    low_res_upsampled = F.interpolate(
+        low_res_img,
+        size=cfg_super_res.dataset.image_size,
+        mode='bilinear',
+        align_corners=False
+    )
+
+    # 3. Use the super-resolution model to refine the upsampled image
+    # The super-res model is conditioned on the upsampled image.
+    print("--- Running super-resolution model ---")
+    # This requires a modified sampler that takes the low-res image as an additional condition
+    # For simplicity, we'll use a standard DDPM sampler where the super-res model
+    # is architecturally designed to accept the low-res image.
+
+    constants = get_diffusion_constants(cfg_super_res, device)
+    betas = constants["betas"]
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    timesteps = cfg_super_res.diffusion.timesteps
+    batch_size = cfg_super_res.sampling.batch_size
+
+    img = torch.randn_like(low_res_upsampled)  # Start from noise at the high resolution
+
+    for i in tqdm(reversed(range(timesteps)), desc="Cascaded Super-Res Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # The super_res_model must accept the noisy high-res image `img`
+        # and the upsampled low-res image `low_res_upsampled` as conditions.
+        predicted_noise = super_res_model(img, t, low_res_upsampled)
+
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+        model_mean = coeff_img * (img - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            posterior_variance_t = constants["posterior_variance"][i]
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    return img
+
+
+@torch.no_grad()
+def ldm_sampler(ldm_unet, vae, cfg, device, conds=None):
+    """
+    Sampler for Latent Diffusion Models (LDMs).
+    Operates in latent space and decodes at the end.
+    """
+    # The DDPM sampling logic is identical, but happens in the latent space
+    latent_channels = vae.config.latent_channels
+    latent_size = cfg.dataset.image_size // 8  # Common downsampling factor
+
+    constants = get_diffusion_constants(cfg, device)
+    betas = constants["betas"]
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    timesteps = cfg.diffusion.timesteps
+    batch_size = cfg.sampling.batch_size
+
+    # Start with noise in the latent space
+    latents = torch.randn((batch_size, latent_channels, latent_size, latent_size), device=device)
+
+    for i in tqdm(reversed(range(timesteps)), desc="LDM Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        predicted_noise = ldm_unet(latents, t, conds)
+
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (latents - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            latents = model_mean
+        else:
+            posterior_variance_t = constants["posterior_variance"][i]
+            noise = torch.randn_like(latents)
+            latents = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    # Decode the final latents back to pixel space
+    # The scaling factor is specific to the VAE used (e.g., Stability AI's)
+    latents = latents / 0.18215
+    images = vae.decode(latents).sample
+    return images
+
+
+@torch.no_grad()
+def classifier_guided_sampler(model, classifier, cfg, device, conds=None, guidance_scale=7.5):
+    """
+    DDPM sampler with classifier guidance.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    betas = constants["betas"]
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    posterior_variance = constants["posterior_variance"]
+
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+    timesteps = cfg.diffusion.timesteps
+
+    # Assume conds[0] contains the target class labels for guidance
+    target_classes = conds[0]
+
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device)
+
+    for i in tqdm(reversed(range(timesteps)), desc="Classifier-Guided Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # 1. Get the original noise prediction
+        predicted_noise = model(img, t, conds)
+
+        # 2. Compute the guidance gradient
+        with torch.enable_grad():
+            img_in = img.detach().requires_grad_(True)
+            logits = classifier(img_in, t)
+            log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+            selected = log_probs[range(len(logits)), target_classes.view(-1)]
+            gradient = torch.autograd.grad(selected.sum(), img_in)[0]
+
+        # 3. Modify the predicted noise with the guidance
+        # The gradient is scaled by the guidance scale and posterior variance
+        modified_noise = predicted_noise - torch.sqrt(posterior_variance[i]) * guidance_scale * gradient
+
+        # 4. Denoise using the modified noise
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * modified_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance[i]) * noise
+
+    return img
+
+
+@torch.no_grad()
+def guided_sampler(model, classifier, cfg, device, conds=None, guidance_scale=7.5):
+    """
+    DDPM sampler with classifier guidance. Alias for classifier_guided_sampler.
+    """
+    return classifier_guided_sampler(model, classifier, cfg, device, conds, guidance_scale)
+
+
+@torch.no_grad()
+def moe_sampler(moe_model, cfg, device, conds=None):
+    """
+    Sampler for Mixture-of-Experts (MoE) diffusion models.
+    The MoE model itself handles the routing to different experts based on timestep.
+    """
+    # The sampling logic is identical to DDPM. The MoE model's forward pass
+    # internally selects the correct expert based on the timestep `t`.
+    print("Using MoE sampler (equivalent to DDPM, expert routing is internal to the model)")
+    return ddpm_sampler(moe_model, cfg, device, conds)
