@@ -24,9 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # Call the main launch script with the predefined debug parameters
 # and the --dry-run flag.
 "$SCRIPT_DIR/launch_experiment.sh" \
-    --experiment "mnist_fg_color_target_digit_1" \
+    --experiment "comp_mnist" \
     --run "99" \
-    --dataset "MNIST_COLOR" \
+    --dataset "MNIST_COMPOSABLE" \
     --task "generate" \
     --color "fg" \
     --number "8" \

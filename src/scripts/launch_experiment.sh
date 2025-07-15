@@ -160,3 +160,6 @@ else
 fi
 
 success "Experiment launch script finished."
+
+
+#./src/scripts/launch_experiment.sh --experiment "comp_mnist" --run "1" --dataset "MNIST_COMPOSABLE" --task "generate" --color "fg" --number "8" --gen_model "vanilla" --partition bigbatch

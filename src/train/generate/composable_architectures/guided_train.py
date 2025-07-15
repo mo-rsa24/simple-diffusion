@@ -95,8 +95,9 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
 
             real_batch = x[: cfg.sampling.batch_size]
+            conds_batch = conds[: cfg.sampling.batch_size]
             ema.apply_shadow()
-            generated = generate_batch(lambda x_, t_: model(x_, t_, conds),
+            generated = generate_batch(lambda x_, t_: model(x_, t_, conds_batch),
                                        image_size=cfg.dataset.image_size,
                                        batch_size=cfg.sampling.batch_size,
                                        channels=cfg.dataset.channels,
