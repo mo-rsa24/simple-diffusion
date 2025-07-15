@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import List
+import inspect
 
 class MixtureOfExperts(nn.Module):
     """Combine several expert score networks with mixing coefficients."""
@@ -14,7 +15,15 @@ class MixtureOfExperts(nn.Module):
         self.beta_schedule = beta_schedule
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, masks: List[torch.Tensor]):
-        eps = torch.stack([expert(x, t) for expert in self.experts], dim=1)
+        eps_list = []
+        for expert in self.experts:
+            sig = inspect.signature(expert.forward)
+            if len(sig.parameters) == 1:
+                eps = expert(x)
+            else:
+                eps = expert(x, t)
+            eps_list.append(eps)
+        eps = torch.stack(eps_list, dim=1)
         alpha = self.mixer(x).unsqueeze(2)
         eps = eps * alpha
         return eps.sum(dim=1)

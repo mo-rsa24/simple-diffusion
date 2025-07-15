@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import List
+import inspect
 
 class CascadedDiffusion(nn.Module):
     """Run a sequence of conditional diffusion models."""
@@ -12,5 +13,12 @@ class CascadedDiffusion(nn.Module):
     def forward(self, x: torch.Tensor, t: torch.Tensor, factors: List[torch.Tensor]):
         out = x
         for stage, cond in zip(self.stages, factors):
-            out = stage(out, t, cond)
+            sig = inspect.signature(stage.forward)
+            num_args = len(sig.parameters)
+            if num_args == 1:
+                out = stage(out)
+            elif num_args == 2:
+                out = stage(out, t)
+            else:
+                out = stage(out, t, cond)
         return out
