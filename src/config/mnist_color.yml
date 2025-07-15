@@ -17,7 +17,7 @@ model:
   type: unet
   vpsde:
     dim: 64
-    channels: 1
+    channels: 3
     dim_mults: [1,2,4]
     use_attention_at: [1]
     sde:
@@ -26,10 +26,10 @@ model:
       beta_max: 20.0
   ldm:
     dim: 64
-    init_dim: 32
+    init_dim: 64
     out_dim: null
     dim_mults: [1,2,4]
-    channels: 1
+    channels: 3
     latent_dim: 64
     self_condition: false
     resnet_block_groups: 4
@@ -37,10 +37,10 @@ model:
   edm:
     dim: 64
     dim_mults: [1,2,4]
-    channels: 1
+    channels: 3
   slot:
     dim: 64
-    channels: 1
+    channels: 3
   composable:
     base_dim: 64
     channels: 3
@@ -63,7 +63,7 @@ model:
     init_dim: 64
     out_dim: null
     dim_mults: [1, 2, 4]
-    channels: 1
+    channels: 3
     self_condition: false
     resnet_block_groups: 4
     use_attention_at: [1]

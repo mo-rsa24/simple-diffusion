@@ -81,7 +81,6 @@ def train(cfg, dirs, model, ema, encoder, decoder, train_loader, logger, device,
 
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     checkpoint_manager.save(model, optimizer, None, epoch, global_step)
-
             avg_loss = running_loss / len(train_loader)
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)

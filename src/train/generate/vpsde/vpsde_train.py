@@ -90,6 +90,7 @@ def train(cfg: Config,
                               logger, writer=writer, wandb_tracker=wandb_run)
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     ckpt_mgr.save(model, optimizer, None, epoch, global_step)
+                break
             # ── epoch-level summaries ─────────────────────────────
             avg_loss  = running_loss / len(train_loader)
             epoch_dur = time.time() - epoch_start
@@ -115,6 +116,7 @@ def train(cfg: Config,
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+            break
     except Exception as e:
         ckpt_mgr.save(model, optimizer, None, epoch, global_step)
         logger.error(f"Training interrupted: {e}")

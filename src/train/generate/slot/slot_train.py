@@ -75,7 +75,7 @@ def train(cfg: Config, dirs, model, ema, train_loader, logger, device, writer=No
 
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     checkpoint_manager.save(model, optimizer, None, epoch, global_step)
-
+                break
             avg_loss = running_loss / len(train_loader)
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
@@ -96,6 +96,7 @@ def train(cfg: Config, dirs, model, ema, train_loader, logger, device, writer=No
                 checkpoint_manager.save(model, optimizer, None, epoch, global_step)
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+            break
     except Exception as e:
         checkpoint_manager.save(model, optimizer, None, epoch, global_step)
         logger.error(f"Training interrupted: {e}")

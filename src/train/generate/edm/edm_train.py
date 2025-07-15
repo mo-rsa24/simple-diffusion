@@ -32,8 +32,7 @@ def train(cfg: Config,
 
     opt      = Adam(model.parameters(), **cfg.optimizer.params)
     scaler   = GradScaler()
-    schedule = EDMNoiseSchedule(**cfg.diffusion.noise_schedule.params)
-    sigma_data = cfg.diffusion.sigma_data
+    schedule = EDMNoiseSchedule()
 
     start   = time.time()
     log_training_start(
@@ -73,7 +72,7 @@ def train(cfg: Config,
                 sigma = schedule.sample(B, device)
 
                 opt.zero_grad(set_to_none=True)
-                loss = edm_loss(model, x0, sigma, sigma_data)
+                loss = edm_loss(model, x0, sigma)
                 scaler.scale(loss).backward()
                 scaler.step(opt)
                 scaler.update()
@@ -88,7 +87,7 @@ def train(cfg: Config,
                               logger, writer=writer, wandb_tracker=wandb_run)
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                         ckpt_mgr.save(model, opt, None, epoch, global_step)
-
+                break
             # epoch summary
             avg = running / len(train_loader)
             log_epoch_summary(logger, epoch, cfg.training.epochs,
@@ -114,6 +113,7 @@ def train(cfg: Config,
                                 epoch=epoch, wandb_run=wandb_run, writer=writer)
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 ckpt_mgr.save(model, opt, None, epoch, global_step)
+            break
     except Exception as e:
         ckpt_mgr.save(model, opt, None, epoch, global_step)
         logger.error(f"Training interrupted: {e}")
