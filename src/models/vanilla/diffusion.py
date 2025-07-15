@@ -56,8 +56,25 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1", timesteps: i
     return loss
 
 @torch.no_grad()
-def p_sample_loop(model, shape, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
-    device = next(model.parameters()).device
+def p_sample_loop(
+    model,
+    shape,
+    timesteps: int = 300,
+    beta_start: float = 0.0001,
+    beta_end: float = 0.02,
+    device: torch.device | None = None,
+):
+    """Reverse diffusion process for arbitrary score functions.
+
+    The ``model`` argument can be either a ``nn.Module`` or any callable
+    returning the predicted noise. When ``device`` is ``None`` and ``model``
+    is a module, the parameters of ``model`` are used to infer the device.
+    """
+    if device is None:
+        if hasattr(model, "parameters"):
+            device = next(model.parameters()).device
+        else:
+            device = torch.device("cpu")
 
     b = shape[0]
     # start from pure noise (for each example in the batch)
@@ -70,8 +87,24 @@ def p_sample_loop(model, shape, timesteps: int = 300, beta_start: float = 0.0001
 
 
 @torch.no_grad()
-def sample(model, image_size, batch_size: int = 16, channels: int = 3, timesteps: int = 300, beta_start: float = 0.0001, beta_end: float = 0.02):
-    return p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
+def sample(
+    model,
+    image_size,
+    batch_size: int = 16,
+    channels: int = 3,
+    timesteps: int = 300,
+    beta_start: float = 0.0001,
+    beta_end: float = 0.02,
+    device: torch.device | None = None,
+):
+    return p_sample_loop(
+        model,
+        shape=(batch_size, channels, image_size, image_size),
+        timesteps=timesteps,
+        beta_start=beta_start,
+        beta_end=beta_end,
+        device=device,
+    )
 
 
 @torch.no_grad()
@@ -83,6 +116,17 @@ def generate_batch(model,
                    beta_start: float = 0.0001,
                    beta_end: float = 0.02,
                    device: torch.device = None) -> torch.Tensor:
-    device = device or next(model.parameters()).device
-    final = p_sample_loop(model, shape=(batch_size, channels, image_size, image_size), timesteps=timesteps, beta_start=beta_start, beta_end=beta_end)
+    if device is None:
+        if hasattr(model, "parameters"):
+            device = next(model.parameters()).device
+        else:
+            device = torch.device("cpu")
+    final = p_sample_loop(
+        model,
+        shape=(batch_size, channels, image_size, image_size),
+        timesteps=timesteps,
+        beta_start=beta_start,
+        beta_end=beta_end,
+        device=device,
+    )
     return final.to(device)

@@ -410,8 +410,8 @@ def visualize_images(
 
     # --- De-normalize if required ---
     if denormalize:
-        mean = torch.tensor(mean).view(-1, 1, 1)
-        std = torch.tensor(std).view(-1, 1, 1)
+        mean = torch.tensor(mean, device=batch.device).view(-1, 1, 1)
+        std = torch.tensor(std, device=batch.device).view(-1, 1, 1)
         batch = batch * std + mean
 
     # --- Create grid ---

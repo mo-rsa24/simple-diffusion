@@ -100,12 +100,12 @@ def train(
                     log_batch(step, loss, cfg.optimizer.params.get("lr", 2e-4), logger, writer=writer, wandb_tracker=wandb_run)
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     ckpt_mgr.save(model, optimizer, None, epoch, global_step)
-
+                break
             avg_loss = running_loss / len(train_loader)
             duration = time.time() - epoch_start
             log_training_stats(logger, epoch, avg_loss, duration, optimizer, writer=writer, wandb_tracker=wandb_run)
 
-            real_batch = x[: cfg.sampling.batch_size].to(device)
+            real_batch = x[: cfg.sampling.batch_size]
             ema.apply_shadow()
             generated = generate_batch(lambda x_, t_: model(x_, t_)["merged"],
                                        image_size=cfg.dataset.image_size,
@@ -124,6 +124,7 @@ def train(
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+            break
     except Exception as e:
         ckpt_mgr.save(model, optimizer, None, epoch, global_step)
         logger.error(f"Training interrupted: {e}")

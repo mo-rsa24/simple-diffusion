@@ -109,8 +109,10 @@ class EDMUNet(nn.Module):
         self.net = Unet(**kwargs)        # reuse your file
     def forward(self, x, sigma):
         # Karras preconditioning
-        c_in  = 1 / torch.sqrt(sigma**2 + 1)
-        c_skip= sigma / torch.sqrt(sigma**2 + 1)
+        if sigma.dim() == 0:
+            sigma = sigma.expand(x.shape[0])
+        c_in = 1 / torch.sqrt(sigma ** 2 + 1)
+        c_skip = sigma / torch.sqrt(sigma ** 2 + 1)
         x_in  = c_in[:, None, None, None] * x
         h     = self.net(x_in, sigma)    # assumes net embeds σ internally
         return c_skip[:, None, None, None] * x + h

@@ -22,6 +22,7 @@ class ComposableDiffusionModel(nn.Module):
         self.color_slot = SlotModule(channels, base_dim)
         self.box_slot = SlotModule(channels, base_dim)
         self.merge_attn = Attention(base_dim)
+        self.gating_linear = nn.Linear(channels, base_dim)
 
     def forward(self, x, t=None):
         shape = self.shape_slot(x)
@@ -32,10 +33,12 @@ class ComposableDiffusionModel(nn.Module):
 
     def merge(self, slots):
         stacked = torch.stack(slots, dim=1)  # B x S x C x H x W
-        b, s, c, h, w = stacked.shape
-        x = stacked.view(b, s, -1)
-        x = self.merge_attn(x).view(b, s, c, h, w)
-        return x.sum(dim=1)
+        pooled = stacked.mean(dim=(-1, -2))  # B x S x C
+        features = self.gating_linear(pooled)
+        attn_out = self.merge_attn(features)
+        weights = torch.softmax(attn_out.mean(dim=-1), dim=1)  # B x S
+        weights = weights[:, :, None, None, None]
+        return (stacked * weights).sum(dim=1)
 
     def sample_slots(self, shape, color, box):
         return self.merge([shape, color, box])

@@ -17,10 +17,10 @@ class FactorNet(nn.Module):
         return self.net(x)
 
 class GatingNetwork(nn.Module):
-    def __init__(self, dim: int, factors: int):
+    def __init__(self, factors: int):
         super().__init__()
         self.fc = nn.Sequential(
-            nn.Linear(dim * factors, dim * factors),
+            nn.Linear(factors, factors),
             nn.Sigmoid(),
         )
 
@@ -28,16 +28,24 @@ class GatingNetwork(nn.Module):
         # scores: list of tensors [B,C,H,W]
         stacked = torch.stack(scores, dim=1)
         b, f, c, h, w = stacked.shape
-        gate = self.fc(stacked.mean(dim=[2,3,4]))  # [B, f*dim]
+        gate = stacked.mean(dim=[2, 3, 4])  # [B, f]
+        gate = self.fc(gate)  # [B, f]
         gate = gate.view(b, f, 1, 1, 1)
         return (gate * stacked).sum(dim=1)
 
 class CompositionalUNet(nn.Module):
     """Factorized UNet with learnable gating."""
-    def __init__(self, dim: int = 64, factors: int = 3, beta_schedule: str = "linear", use_attention_at: Optional[List[int]] = None):
+
+    def __init__(
+            self,
+            dim: int = 64,
+            factors: int = 3,
+            beta_schedule: str = "linear",
+            use_attention_at: Optional[List[int]] = None,
+    ):
         super().__init__()
         self.factors = nn.ModuleList([FactorNet(dim=dim) for _ in range(factors)])
-        self.gating = GatingNetwork(dim, factors)
+        self.gating = GatingNetwork(factors)
         self.beta_schedule = beta_schedule
         self.use_attention_at = use_attention_at or []
 

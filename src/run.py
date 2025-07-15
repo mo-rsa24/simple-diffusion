@@ -165,7 +165,7 @@ if __name__ == "__main__":
                 composable_train(cfg, dirs, model, ema, train_loader,
                                  logger, device, writer, wandb_run)
             elif args.gen_model == "comp_unet":
-                model_params = dict(cfg.model.composable)
+                model_params = dict(cfg.model.comp_unet)
                 model = GENERATION_MODEL_REGISTRY["comp_unet"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.composable_architectures import comp_unet_train
@@ -173,15 +173,21 @@ if __name__ == "__main__":
                 comp_unet_train(cfg, dirs, model, ema, train_loader,
                                 logger, device, writer, wandb_run)
             elif args.gen_model == "cascaded":
-                model_params = dict(cfg.model.composable)
-                model = GENERATION_MODEL_REGISTRY["cascaded"]["unet"](**model_params).to(device)
+                model_params = dict(cfg.model.cascaded)
+                stage_dim = model_params.pop("dim", 64)
+                num_stages = model_params.pop("stages", 3)
+                stages = [
+                    GENERATION_MODEL_REGISTRY["slot"]["unet"](dim=stage_dim, channels=cfg.dataset.channels)
+                    for _ in range(num_stages)
+                ]
+                model = GENERATION_MODEL_REGISTRY["cascaded"]["unet"](stages=stages, **model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.composable_architectures import cascaded_train
 
                 cascaded_train(cfg, dirs, model, ema, train_loader,
                                logger, device, writer, wandb_run)
             elif args.gen_model == "guided":
-                model_params = dict(cfg.model.composable)
+                model_params = dict(cfg.model.guided)
                 model = GENERATION_MODEL_REGISTRY["guided"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.composable_architectures import guided_train
@@ -189,8 +195,15 @@ if __name__ == "__main__":
                 guided_train(cfg, dirs, model, ema, train_loader,
                              logger, device, writer, wandb_run)
             elif args.gen_model == "moe":
-                model_params = dict(cfg.model.composable)
-                model = GENERATION_MODEL_REGISTRY["moe"]["unet"](**model_params).to(device)
+                model_params = dict(cfg.model.moe)
+                expert_dim = model_params.pop("dim", 64)
+                num_experts = model_params.pop("experts", 3)
+                experts = [
+                    GENERATION_MODEL_REGISTRY["slot"]["unet"](dim=expert_dim, channels=cfg.dataset.channels)
+                    for _ in range(num_experts)
+                ]
+                model = GENERATION_MODEL_REGISTRY["moe"]["unet"](experts=experts, dim=expert_dim, **model_params).to(
+                    device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.composable_architectures import moe_train
                 moe_train(cfg, dirs, model, ema, train_loader,
