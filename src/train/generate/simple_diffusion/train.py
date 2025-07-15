@@ -18,8 +18,11 @@ from torch.optim import Adam
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 
+from src.utils.sampling import ddpm_sampler
+
 
 def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
+    model.train()
     if cfg.optimizer.type.lower() == "adam":
         optimizer = Adam(model.parameters(), **cfg.optimizer.params)
     else:
@@ -109,18 +112,15 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
-            real_batch = batch[:cfg.sampling.batch_size].to(device)  # take first 16 real images
-            ema.apply_shadow()
-            generated = generate_batch(
-                model,
-                image_size=cfg.dataset.image_size,
-                batch_size=cfg.sampling.batch_size,
-                channels=cfg.dataset.channels,
-                timesteps=cfg.diffusion.timesteps,
-                beta_start=cfg.diffusion.beta_start,
-                beta_end=cfg.diffusion.beta_end,
-            )
-            ema.restore()
+
+            model.eval()
+            real_batch, real_labels = next(iter(train_loader))
+            real_batch = real_batch.to(device)
+
+            conds = torch.arange(0, cfg.dataset.num_classes, device=device).long()
+            conds = conds.repeat(cfg.sampling.batch_size // cfg.dataset.num_classes + 1)[:cfg.sampling.batch_size]
+
+            generated = ddpm_sampler(model, cfg, device, conds)
             if epoch % cfg.training.log_every_epoch == 0:
                 visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
 
@@ -128,6 +128,7 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
                 checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+            model.train()
     except Exception as e:
         checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
         logger.error(f"Training interrupted: {e}")

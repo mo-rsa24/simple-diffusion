@@ -4,6 +4,7 @@ dataset:
   data_dir: "./data"
 #  batch_size: 128
   batch_size: 4
+  num_classes: 10
   num_workers: 4
   image_size: 28
   pin_memory: true
