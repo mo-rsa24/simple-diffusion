@@ -94,6 +94,10 @@ training:
   save_every_epoch: 25
   resume_from: false
 
+sanity_checks:
+  debug: False
+  num_examples: 8
+
 dirs:
   cluster_base: "/gluster/mmolefe/PhD"
   local_base: .

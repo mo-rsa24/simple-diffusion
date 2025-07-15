@@ -93,15 +93,26 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
 
             real_batch = x[: cfg.sampling.batch_size]
+            bsz = real_batch.size(0)
+            noise = torch.randn_like(real_batch)
+            t = torch.randint(0, cfg.diffusion.timesteps, (bsz,), device=device).long()
+            x_noisy = q_sample(x, t, noise,
+                               timesteps=cfg.diffusion.timesteps,
+                               beta_start=cfg.diffusion.beta_start,
+                               beta_end=cfg.diffusion.beta_end)
+            conds = [batch.get("digit_label", None), batch.get("color_label", None), batch.get("bbox_label", None)]
+            conds = [c.to(device) if torch.is_tensor(c) else None for c in conds]
+            pred = model(x_noisy, t, conds)
+            generated = x_noisy - pred
             ema.apply_shadow()
-            generated = generate_batch(lambda x_, t_: model(x_, t_, conds),
-                                       image_size=cfg.dataset.image_size,
-                                       batch_size=cfg.sampling.batch_size,
-                                       channels=cfg.dataset.channels,
-                                       timesteps=cfg.diffusion.timesteps,
-                                       beta_start=cfg.diffusion.beta_start,
-                                       beta_end=cfg.diffusion.beta_end,
-                                       device=device)
+            # Please check here: generated = generate_batch(lambda x_, t_: model(x_, t_, conds),
+            #                            image_size=cfg.dataset.image_size,
+            #                            batch_size=cfg.sampling.batch_size,
+            #                            channels=cfg.dataset.channels,
+            #                            timesteps=cfg.diffusion.timesteps,
+            #                            beta_start=cfg.diffusion.beta_start,
+            #                            beta_end=cfg.diffusion.beta_end,
+            #                            device=device)
             ema.restore()
             if epoch % cfg.training.log_every_epoch == 0:
                 visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run=wandb_run, writer=writer)

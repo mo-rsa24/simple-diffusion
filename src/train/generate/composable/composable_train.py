@@ -104,16 +104,24 @@ def train(
             duration = time.time() - epoch_start
             log_training_stats(logger, epoch, avg_loss, duration, optimizer, writer=writer, wandb_tracker=wandb_run)
 
-            real_batch = x[: cfg.sampling.batch_size]
             ema.apply_shadow()
-            generated = generate_batch(lambda x_, t_: model(x_, t_)["merged"],
-                                       image_size=cfg.dataset.image_size,
-                                       batch_size=cfg.sampling.batch_size,
-                                       channels=cfg.dataset.channels,
-                                       timesteps=cfg.diffusion.timesteps,
-                                       beta_start=cfg.diffusion.beta_start,
-                                       beta_end=cfg.diffusion.beta_end,
-                                       device=device)
+
+
+            real_batch = x[: cfg.sampling.batch_size]
+            noise = torch.randn_like(real_batch)
+            t = torch.randint(0, cfg.diffusion.timesteps, (noise.size(0),), device=device).long()
+            x_noise  = q_sample(real_batch, t, noise, cfg.diffusion.timesteps, cfg.diffusion.beta_start, cfg.diffusion.beta_end)
+
+            out = model(x_noise, t)["merged"]
+            generated = x_noise - out
+            # generated = generate_batch(lambda x_, t_: model(x_, t_)["merged"],
+            #                            image_size=cfg.dataset.image_size,
+            #                            batch_size=cfg.sampling.batch_size,
+            #                            channels=cfg.dataset.channels,
+            #                            timesteps=cfg.diffusion.timesteps,
+            #                            beta_start=cfg.diffusion.beta_start,
+            #                            beta_end=cfg.diffusion.beta_end,
+            #                            device=device)
             ema.restore()
 
             if epoch % cfg.training.log_every_epoch == 0:

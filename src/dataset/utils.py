@@ -4,7 +4,8 @@ from src.dataset.transforms import build_preprocessing, safe_augmentation
 from typing import Dict, Tuple
 import numpy as np
 from torch.utils.data import ConcatDataset, DataLoader
-from torchvision import transforms,datasets
+from torchvision import datasets
+from torch.utils.data import Dataset, Subset
 import torch
 
 def load_dataset(root_dir, task: str, normalization: str='minmax', resize_strategy: str='center_crop', hist_eq: bool=False, aug_risk: str='low'):
@@ -81,6 +82,11 @@ def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foregr
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
+def tiny_subset(dataset: Dataset, num_items: int = 8) -> Subset:
+    """Return a tiny subset of the dataset for quick overfitting checks."""
+    indices = list(range(min(len(dataset), num_items)))
+    return Subset(dataset, indices)
+
 def get_composable_loaders(cfg: Config, variant: str="foreground", number: int = None,) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Dataloaders for ComposableColoredMNISTWithBBox."""
     from src.dataset.ComposableColoredMNISTWithBBox import ComposableColoredMNISTWithBBox
@@ -94,7 +100,11 @@ def get_composable_loaders(cfg: Config, variant: str="foreground", number: int =
     val_len = len(train_ds) - train_len
     train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
-    return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
+    if cfg.sanity_checks.debug:
+        train_loader = loader(tiny_subset(train_ds, cfg.sanity_checks.num_examples), False)
+    else:
+        train_loader = loader(train_ds, True)
+    return train_loader, loader(val_ds, False), loader(test_ds, False)
 
 def get_composable_separate_loader(cfg: Config, number: int = None)-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {

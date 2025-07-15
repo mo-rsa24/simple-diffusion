@@ -84,6 +84,11 @@ class SamplingConfig:
     edm_sampler: Dict[str, Any]
 
 @dataclass
+class SanityCheckConfig:
+    debug: bool
+    num_examples: int
+
+@dataclass
 class Config:
     experiment_id: str
     run_id: str
@@ -98,3 +103,4 @@ class Config:
     optimizer: OptimizerConfig
     dataset: DatasetConfig
     sampling: SamplingConfig
+    sanity_checks: SanityCheckConfig

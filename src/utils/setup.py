@@ -3,7 +3,7 @@ import torch
 import wandb
 import yaml
 from src.config.configs import Config, TrainingConfig, LoggingConfig, ObservabilityConfig, DiffusionConfig, ModelConfig, \
-    OptimizerConfig, DatasetConfig, DirsConfig, SamplingConfig
+    OptimizerConfig, DatasetConfig, DirsConfig, SamplingConfig, SanityCheckConfig
 from src.utils.env import is_cluster
 from src.utils.logger import init_logger
 
@@ -24,7 +24,8 @@ def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate
         model         = ModelConfig(**data["model"]),
         optimizer     = OptimizerConfig(**data["optimizer"]),
         dataset       = DatasetConfig(**data["dataset"]),
-        sampling      = SamplingConfig(**data["sampling"])
+        sampling      = SamplingConfig(**data["sampling"]),
+        sanity_checks = SanityCheckConfig(**data["sanity_checks"])
     )
 
 
