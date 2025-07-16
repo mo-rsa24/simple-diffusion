@@ -25,13 +25,27 @@ def get_albu_normalize(normalization):
     else:
         return A.NoOp()
 
-def mnist_transform(image_size=28):
-    return T.Compose([
-        T.Resize((image_size, image_size)),
-        T.ToTensor(),
-        # Map [0,1] to [-1,1] as required by most diffusion models
-        T.Lambda(lambda x: x * 2. - 1.)
-    ])
+def mnist_transform(cfg):
+    """
+       Returns a composition of transforms based on the config.
+       """
+    transform_list = []
+
+    # 1. Convert to Tensor
+    transform_list.append(T.ToTensor())
+
+    # 2. Pad to the configured image_size (e.g., 32x32)
+    # This is the crucial step to fix the dimension error.
+    if cfg.dataset.image_size > 28:
+        # Pad to 32x32, keeping the 28x28 image in the center
+        pad_amount = (cfg.dataset.image_size - 28) // 2
+        transform_list.append(T.Pad(pad_amount))
+
+    # 3. Normalize to [-1, 1] range, which is standard for diffusion models
+    transform_list.append(T.Normalize((0.5,), (0.5,)))
+
+    return T.Compose(transform_list)
+
 def resize_with_strategy(size=256, strategy="center_crop"):
     if strategy == "pad":
         return T.Compose([

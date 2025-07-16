@@ -2,11 +2,15 @@ import argparse
 import os
 from pathlib import Path
 import torch
+
+from src.config.con import ConfigLoader
+from src.models.ldm.autoencoder import AutoencoderKL
 from src.models.vanilla.ema import EMA
 from src.monitoring.alert_notifier import send_failure_email
 from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GENERATION_MODEL_REGISTRY
 from src.task import classify_task
 from src.train.logging.training_logger_utils import log_exception
+from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.setup import load_config, build_dirs, init_observers
 
 def parse_args():
@@ -50,6 +54,8 @@ def parse_args():
     p.add_argument("--log-dir", type=str, default=None, help="Directory for training logs")
     p.add_argument("--array_index", type=int, default=None, help="SLURM array task index")
     p.add_argument("--log-level", type=str, default=None, help="Logging level")
+    p.add_argument('--profile', type=str, default='default',
+                        help="The experiment profile to use (e.g., 'sanity', 'debug').")
 
     p.add_argument(
         "--dry-run", action="store_true",
@@ -60,6 +66,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     config_path = f"src/config/{args.dataset.lower()}.yml"
+    loader = ConfigLoader(default_config_path=config_path)
     cfg = load_config(config_path, args.experiment_id, args.run_id, task=args.task)
     if args.log_level:
         cfg.logging.log_level = args.log_level
@@ -132,14 +139,29 @@ if __name__ == "__main__":
                 vae_train(cfg, dirs, model, train_loader, val_loader,  logger, device, writer, wandb_run)
             elif args.gen_model == "ldm":
                 model_params = dict(cfg.model.ldm)  # copy so we don't modify original config
-                latent_dim = model_params.pop("latent_dim")# fallback if missing
-                model_params["channels"] = latent_dim
+
                 vae_params = dict(cfg.model.vae)
-                vae = GENERATION_MODEL_REGISTRY["vae"]["vae"](**vae_params).to(device)
+                vae: AutoencoderKL = GENERATION_MODEL_REGISTRY["vae"]["vae"](**vae_params).to(device)
+                vae_path = Path(Path(dirs.get('ckpt', cfg.dirs.ckpt_dir)).__str__().replace('ldm', 'vae'))
+                vae_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=vae_path, logger=logger)
+                vae_optimizer = torch.optim.Adam(vae.parameters(), **cfg.optimizer.params)
+                try:
+                    vae, vae_optimizer, scheduler, last_epoch, global_step = vae_checkpoint_manager.load_latest(
+                        vae, vae_optimizer, map_location=device)
+                except Exception as e:
+                    logger.warning(f"Could not resume training: {e}")
+
+                encoder = vae.encoder
+                decoder = vae.decoder
+                encoder.eval()
+                decoder.eval()
+
+                latent_channels = vae.encoder.z_channels # print model_params['channels'] here:
+                model_params['channels'] = latent_channels
                 model = GENERATION_MODEL_REGISTRY["ldm"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.ldm.ldm_train import train as ldm_train
-                ldm_train(cfg, dirs, model, ema, vae, train_loader, logger, device, writer, wandb_run)
+                ldm_train(cfg, dirs, model, ema, vae, train_loader, val_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "slot":
                 model_params = dict(cfg.model.slot)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["slot"]["unet"](**model_params).to(device)

@@ -54,7 +54,7 @@ def train(cfg: Config, dirs: Dict, model: AutoencoderKL, train_loader: DataLoade
             log_epoch_start(epoch - 1, logger)
             total_loss, total_recon_loss, total_kl_loss = 0, 0, 0
 
-            for step, train_batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch} [VAE Training]"), 1):
+            for step, train_batch in enumerate(train_loader, 1):
                 optimizer.zero_grad()
                 images = train_batch['image'].to(device)
 

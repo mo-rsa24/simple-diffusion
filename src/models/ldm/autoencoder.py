@@ -4,10 +4,6 @@ import torch.nn.functional as F
 from src.models.vanilla.attention import AttnBlock
 from src.models.vanilla.normalization import Normalize
 
-
-# --- Helper classes and functions (get_activation, ResnetBlock) remain the same ---
-# (Assuming they are defined above in the same file)
-
 def get_activation(name):
     if name == 'swish':
         return nn.SiLU()
@@ -15,7 +11,6 @@ def get_activation(name):
         return nn.GELU()
     else:
         raise NotImplementedError(f"Activation {name} not implemented")
-
 
 class ResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
@@ -61,9 +56,7 @@ class ResnetBlock(nn.Module):
                 x = self.nin_shortcut(x)
         return x + h
 
-
 class Encoder(nn.Module):
-    # --- Encoder implementation remains the same ---
     def __init__(self, *, ch, out_ch, ch_mult=(1, 2, 4, 8), num_res_blocks,
                  attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
                  resolution, z_channels, double_z=True, **ignore_kwargs):
@@ -74,6 +67,7 @@ class Encoder(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.in_channels = in_channels
         self.resolution = resolution
+        self.z_channels = z_channels
 
         self.conv_in = torch.nn.Conv2d(in_channels, self.ch, kernel_size=3, stride=1, padding=1)
         curr_res = resolution
@@ -85,8 +79,7 @@ class Encoder(nn.Module):
             block_in = ch * in_ch_mult[i_level]
             block_out = ch * ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
-                block.append(ResnetBlock(in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch,
-                                         dropout=dropout))
+                block.append(ResnetBlock(in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout))
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(AttnBlock(block_in))
@@ -99,11 +92,9 @@ class Encoder(nn.Module):
             self.down.append(down)
 
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(in_channels=block_out, out_channels=block_out, temb_channels=self.temb_ch,
-                                       dropout=dropout)
+        self.mid.block_1 = ResnetBlock(in_channels=block_out, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout)
         self.mid.attn_1 = AttnBlock(block_out)
-        self.mid.block_2 = ResnetBlock(in_channels=block_out, out_channels=block_out, temb_channels=self.temb_ch,
-                                       dropout=dropout)
+        self.mid.block_2 = ResnetBlock(in_channels=block_out, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout)
 
         self.norm_out = Normalize(block_out)
         self.conv_out = torch.nn.Conv2d(block_out, 2 * z_channels if double_z else z_channels,
@@ -119,19 +110,15 @@ class Encoder(nn.Module):
                     h = self.down[i_level].attn[i_block](h)
             if i_level != self.num_resolutions - 1:
                 h = self.down[i_level].downsample(h)
-
         h = self.mid.block_1(h)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h)
-
         h = self.norm_out(h)
         h = self.nonlinearity(h)
         h = self.conv_out(h)
         return h
 
-
 class Decoder(nn.Module):
-    # --- Decoder implementation remains the same ---
     def __init__(self, *, ch, out_ch, ch_mult=(1, 2, 4, 8), num_res_blocks,
                  attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
                  resolution, z_channels, give_pre_end=False, **ignore_kwargs):
@@ -143,28 +130,22 @@ class Decoder(nn.Module):
         self.in_channels = in_channels
         self.resolution = resolution
         self.give_pre_end = give_pre_end
-        self.z_channels = z_channels  # Storing z_channels here
+        self.z_channels = z_channels
 
         block_in = ch * ch_mult[self.num_resolutions - 1]
-        curr_res = resolution // (2 ** (self.num_resolutions - 1))
-
+        curr_res = resolution // (2**(self.num_resolutions - 1))
         self.conv_in = torch.nn.Conv2d(z_channels, block_in, kernel_size=3, stride=1, padding=1)
-
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-                                       dropout=dropout)
+        self.mid.block_1 = ResnetBlock(in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout)
         self.mid.attn_1 = AttnBlock(block_in)
-        self.mid.block_2 = ResnetBlock(in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-                                       dropout=dropout)
-
+        self.mid.block_2 = ResnetBlock(in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout)
         self.up = nn.ModuleList()
         for i_level in reversed(range(self.num_resolutions)):
             block = nn.ModuleList()
             attn = nn.ModuleList()
             block_out = ch * ch_mult[i_level]
             for i_block in range(self.num_res_blocks + 1):
-                block.append(ResnetBlock(in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch,
-                                         dropout=dropout))
+                block.append(ResnetBlock(in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout))
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(AttnBlock(block_in))
@@ -176,17 +157,13 @@ class Decoder(nn.Module):
                 up.conv = torch.nn.Conv2d(block_in, block_in, kernel_size=3, stride=1, padding=1)
                 curr_res *= 2
             self.up.insert(0, up)
-
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
         self.nonlinearity = get_activation('swish')
 
     def forward(self, z):
         h = self.conv_in(z)
-        h = self.mid.block_1(h)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h)
-
+        h = self.mid.block_1(h); h = self.mid.attn_1(h); h = self.mid.block_2(h)
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
                 h = self.up[i_level].block[i_block](h)
@@ -195,18 +172,11 @@ class Decoder(nn.Module):
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
                 h = self.up[i_level].conv(h)
-
-        if self.give_pre_end:
-            return h
-
-        h = self.norm_out(h)
-        h = self.nonlinearity(h)
-        h = self.conv_out(h)
+        if self.give_pre_end: return h
+        h = self.norm_out(h); h = self.nonlinearity(h); h = self.conv_out(h)
         return h
 
-
 class DiagonalGaussianDistribution(object):
-    # --- DiagonalGaussianDistribution implementation remains the same ---
     def __init__(self, parameters, deterministic=False):
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
@@ -216,21 +186,14 @@ class DiagonalGaussianDistribution(object):
         self.var = torch.exp(self.logvar)
         if self.deterministic:
             self.var = self.std = torch.zeros_like(self.mean)
-
     def sample(self):
         return self.mean + self.std * torch.randn_like(self.mean)
-
     def kl(self, other=None):
-        if self.deterministic:
-            return torch.tensor([0.], device=self.mean.device)
-        if other is None:
-            return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
-        else:
-            raise NotImplementedError("KL to another distribution not implemented.")
-
+        if self.deterministic: return torch.tensor([0.], device=self.mean.device)
+        if other is None: return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
+        else: raise NotImplementedError()
     def mode(self):
         return self.mean
-
 
 class AutoencoderKL(nn.Module):
     def __init__(self, ddconfig, embed_dim, lossconfig):
@@ -241,23 +204,15 @@ class AutoencoderKL(nn.Module):
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
         self.kl_weight = lossconfig.get("params", {}).get("kl_weight", 1.0)
-
     def encode(self, x):
         h = self.encoder(x)
         moments = self.quant_conv(h)
-        posterior = DiagonalGaussianDistribution(moments)
-        return posterior
-
+        return DiagonalGaussianDistribution(moments)
     def decode(self, z):
         z = self.post_quant_conv(z)
-        dec = self.decoder(z)
-        return dec
-
+        return self.decoder(z)
     def forward(self, input, sample_posterior=True):
         posterior = self.encode(input)
-        if sample_posterior:
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
+        z = posterior.sample() if sample_posterior else posterior.mode()
         dec = self.decode(z)
         return dec, posterior

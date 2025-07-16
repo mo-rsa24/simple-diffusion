@@ -1,130 +1,47 @@
-# config/tb.yaml
+# ===================================================================
+# BASE CONFIGURATION
+# Defines the default parameters for all experiments using this file.
+# ===================================================================
 seed: 42
 
-dataset:
+# --- Default Dataset Settings ---
+dataset: &default_dataset
+  name: MNIST
   data_dir: "./data"
-#  batch_size: 128
-  batch_size: 4
-  num_workers: 4
-  image_size: 28
-  pin_memory: true
+  image_size: 32 # Padded to be a power of two
   channels: 1
-  augmentation: low
-  normalization: minmax
-  resize_strategy: center_crop
-  hist_eq: false
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
 
-model:
-  type: unet
-  vpsde:
-    dim: 64
-    channels: 1
-    dim_mults: [1,2,4]
-    use_attention_at: [1]
-    sde:
-      type: vp
-      beta_min: 0.1
-      beta_max: 20.0
-  vae:
-    ddconfig:
-      double_z: True
-      z_channels: 4
-      resolution: 28 # Input image resolution
-      in_channels: 1 # Grayscale for MNIST
-      out_ch: 1
-      ch: 128
-      ch_mult: [ 1, 2, 4 ] # For 32x32, 3 levels of down/upsampling is typical
-      num_res_blocks: 2
-      attn_resolutions: [ 16 ] # Apply attention at the 16x16 feature map level
-      dropout: 0.0
-    lossconfig:
-      target: torch.nn.Identity
-      params:
-        kl_weight: 0.000005 # A small but non-zero KL weight is crucial
-        logvar_init: 0.0
-    embed_dim: 4 # Should match z_channels
-  ldm:
-    dim: 64
-    init_dim: 64
-    out_dim: null
-    dim_mults: [1,2,4]
-    channels: 1
-    latent_dim: 64
-    self_condition: false
-    resnet_block_groups: 4
-    use_attention_at: [1]
-  edm:
-    dim: 64
-    dim_mults: [1,2,4]
-    channels: 1
-  slot:
-    dim: 64
-    channels: 1
-  composable:
-    base_dim: 64
-    channels: 1
-  comp_unet:
-    dim: 64
-    factors: 3
-    beta_schedule: linear
-  cascaded:
-    dim: 64
-    stages: 3
-    beta_schedule: linear
-  guided:
-    dim: 64
-    slots: 3
-  moe:
-    dim: 64
-    experts: 3
-    beta_schedule: linear
-  classifier_guided:
-    dim: 64
-    num_classes: 10
-  vanilla:
-    dim: 64
-    init_dim: 64
-    out_dim: null
-    dim_mults: [1, 2, 4]
-    channels: 1
-    self_condition: false
-    resnet_block_groups: 4
-    use_attention_at: [1]
+# --- Default Training Settings ---
+training: &default_training
+  epochs: 50
+  log_every_step: 100
+  log_every_epoch: 1
+  save_every_epoch: 5
+  resume_from: false
 
-optimizer:
-  type: "Adam"
+# --- Default Optimizer ---
+optimizer: &default_optimizer
+  type: Adam
   params:
-#    lr: !!float "2e-4"
-    lr: 0.001
-    betas:      [0.9, 0.999]
-    weight_decay: 0.0
+    lr: 0.0002
+    betas: [0.9, 0.999]
 
-diffusion:
-  timesteps: 200
+# --- Default Training Settings ---
+diffusion: &default_diffusion
+  timesteps: 1000
   loss_type: "l2"
   beta_start: 0.0001
   ema_decay: 0.9999
   beta_end: 0.02
 
-#training:
-#  epochs: 20
-#  log_every_step: 6000
-#  log_every_epoch: 5
-#  save_every_step: 6000
-#  save_every_epoch: 20
-#  resume_from: false
+# --- Default Logging ---
+logging: &default_logging
+  use_wandb: false
+  use_tensorboard: false
 
-training:
-  epochs: 50
-  log_every_step: 16
-  log_every_epoch: 10
-  save_every_step: 16
-  save_every_epoch: 10
-  resume_from: false
-
-sanity_checks:
-  debug: True
-  num_examples: 16
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD"
@@ -135,29 +52,97 @@ dirs:
     base: "./results"
     samples: "./samples"
     side_by_side: "./side_by_side"
-    feature_maps: "./feature_maps"
-    latent_prior: "./latent_prior"
-    latent_space: "./latent_space"
-    reconstruction_error_distribution: "./latent_space"
-    prior_samples: "./prior_samples"
-    tsne: "./tsne"
   tensorboard_dir: "./tensorboard"
   wandb_dir: "./wandb"
 
-logging:
-  use_tensorboard: false
-  use_wandb: false
+# ===================================================================
+# MODEL-SPECIFIC OVERRIDES
+# Each block contains parameters that will override the defaults
+# when that model is selected via the -g <model_name> flag.
+# ===================================================================
+model:
+  vanilla:
+    # Vanilla Unet uses the default dataset and training settings.
+    # We only override the learning rate.
+    optimizer:
+      params:
+        lr: 0.0003
 
-sampling:
-  batch_size: 4
-  channels: 1
-  blit: true
-  repeat_delay: 1000
-  edm_sampler:
-    params: { }
+  vae:
+    # VAE training requires its own specific parameters.
+    # It inherits the default dataset settings.
+    training:
+      epochs: 50 # VAEs need sufficient training
+    dirs:
+      results_dir:
+        latent_prior: "./latent_prior"
+        latent_space: "./latent_space"
+        reconstruction_error_distribution: "./latent_space"
+        prior_samples: "./prior_samples"
+    optimizer:
+      params:
+        lr: 0.001
+    # VAE-specific model architecture params
+    architecture:
+      ddconfig:
+        double_z: True
+        z_channels: 4
+        resolution: 32
+        in_channels: 1
+        out_ch: 1
+        ch: 128
+        ch_mult: [1, 2, 4, 4]
+        num_res_blocks: 2
+        attn_resolutions: [16]
+        dropout: 0.0
+      lossconfig:
+        params:
+          kl_weight: 0.000005
+      embed_dim: 4
 
-observability:
-  feature_maps: false
-  batch_grid: true
-  sample_table: true
-  diffusion_process: true
+  ldm:
+    # The LDM's Unet has its own architecture.
+    # It will use the pre-trained VAE, so it doesn't need VAE params.
+    optimizer:
+      params:
+        lr: 0.0001
+    architecture:
+      dim: 64
+      dim_mults: [1, 2, 4]
+      resnet_block_groups: 4
+      # 'channels' is set dynamically in run.py from the VAE
+
+# ===================================================================
+# EXPERIMENT PROFILES
+# Defines sets of overrides that can be activated with --profile <name>
+# This is perfect for sanity checks, debugging, or full production runs.
+# ===================================================================
+profiles:
+  default:
+    # The default profile has no overrides. It uses the settings defined above.
+    description: "Standard training run with default parameters."
+
+  sanity:
+    # The 'sanity' profile is for quick overfitting tests.
+    description: "A quick sanity check on a small batch to test for bugs."
+    enabled: True
+    num_examples: 4
+    dataset:
+      batch_size: 4 # Use a very small batch size
+    diffusion:
+      timesteps: 200
+    training:
+      epochs: 10 # Only run for a few epochs
+      log_every_step: 4 # Log every single step
+      log_every_epoch: 2
+      save_every_epoch: 10
+    optimizer:
+      params:
+        lr: 0.01 # Use a high learning rate to force quick changes
+
+  debug:
+    # The 'debug' profile disables logging for faster local iteration.
+    description: "A debug run with logging disabled."
+    logging:
+      use_wandb: false
+      use_tensorboard: false

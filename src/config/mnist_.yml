@@ -1,0 +1,162 @@
+seed: 42
+
+dataset:
+  data_dir: "./data"
+#  batch_size: 128
+  batch_size: 4
+  num_workers: 4
+#  image_size: 28
+  image_size: 32 # For LDM
+  pin_memory: true
+  channels: 1
+  augmentation: low
+  normalization: minmax
+  resize_strategy: center_crop
+  hist_eq: false
+
+model:
+  type: unet
+  vpsde:
+    dim: 64
+    channels: 1
+    dim_mults: [1,2,4]
+    use_attention_at: [1]
+    sde:
+      type: vp
+      beta_min: 0.1
+      beta_max: 20.0
+  vae:
+    ddconfig:
+      double_z: True
+      z_channels: 4
+#      resolution: 28 # Input image resolution
+      resolution: 32 # Input image resolution
+      in_channels: 1 # Grayscale for MNIST
+      out_ch: 1
+      ch: 128
+      ch_mult: [ 1, 2, 4 ] # For 32x32, 3 levels of down/upsampling is typical
+      num_res_blocks: 2
+      attn_resolutions: [ 16 ] # Apply attention at the 16x16 feature map level
+      dropout: 0.0
+    lossconfig:
+      target: torch.nn.Identity
+      params:
+        kl_weight: 0.000005 # A small but non-zero KL weight is crucial
+        logvar_init: 0.0
+    embed_dim: 4 # Should match z_channels
+  ldm:
+    dim: 64
+    init_dim: 64
+    out_dim: null
+    dim_mults: [1,2,4]
+    self_condition: false
+    resnet_block_groups: 4
+    use_attention_at: [1]
+  edm:
+    dim: 64
+    dim_mults: [1,2,4]
+    channels: 1
+  slot:
+    dim: 64
+    channels: 1
+  composable:
+    base_dim: 64
+    channels: 1
+  comp_unet:
+    dim: 64
+    factors: 3
+    beta_schedule: linear
+  cascaded:
+    dim: 64
+    stages: 3
+    beta_schedule: linear
+  guided:
+    dim: 64
+    slots: 3
+  moe:
+    dim: 64
+    experts: 3
+    beta_schedule: linear
+  classifier_guided:
+    dim: 64
+    num_classes: 10
+  vanilla:
+    dim: 64
+    init_dim: 64
+    out_dim: null
+    dim_mults: [1, 2, 4]
+    channels: 1
+    self_condition: false
+    resnet_block_groups: 4
+    use_attention_at: [1]
+
+optimizer:
+  type: "Adam"
+  params:
+#    lr: !!float "2e-4"
+    lr: 0.001
+    betas:      [0.9, 0.999]
+    weight_decay: 0.0
+
+diffusion:
+  timesteps: 200
+  loss_type: "l2"
+  beta_start: 0.0001
+  ema_decay: 0.9999
+  beta_end: 0.02
+
+#training:
+#  epochs: 20
+#  log_every_step: 6000
+#  log_every_epoch: 5
+#  save_every_step: 6000
+#  save_every_epoch: 20
+#  resume_from: false
+
+training:
+  epochs: 50
+  log_every_step: 16
+  log_every_epoch: 10
+  save_every_step: 16
+  save_every_epoch: 10
+  resume_from: false
+
+sanity_checks:
+  debug: True
+  num_examples: 16
+
+dirs:
+  cluster_base: "/gluster/mmolefe/PhD"
+  local_base: .
+  ckpt_dir: "./checkpoints"
+  logs_dir: "./logs"
+  results_dir:
+    base: "./results"
+    samples: "./samples"
+    side_by_side: "./side_by_side"
+    feature_maps: "./feature_maps"
+    latent_prior: "./latent_prior"
+    latent_space: "./latent_space"
+    reconstruction_error_distribution: "./latent_space"
+    prior_samples: "./prior_samples"
+    tsne: "./tsne"
+  tensorboard_dir: "./tensorboard"
+  wandb_dir: "./wandb"
+
+logging:
+  use_tensorboard: false
+  use_wandb: false
+
+sampling:
+  batch_size: 4
+  channels: 1
+  blit: true
+  repeat_delay: 1000
+  edm_sampler:
+    params: { }
+
+observability:
+  feature_maps: false
+  batch_grid: true
+  sample_table: true
+  diffusion_process: true

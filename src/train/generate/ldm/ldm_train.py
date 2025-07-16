@@ -19,8 +19,7 @@ from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.utils.sampling import ldm_sampler
 
 
-def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, logger, device, writer=None, wandb_run=None):
-    # Combine model, encoder, decoder params if you want to do end-to-end finetuning (otherwise, freeze encoder/decoder)
+def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, val_loader, logger, device, writer=None, wandb_run=None):
     optimizer = torch.optim.Adam(model.parameters(), **cfg.optimizer.params)
     scaler = GradScaler()
     start_time = time.time()
@@ -35,17 +34,6 @@ def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, logger,
     )
 
     checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt", cfg.dirs.ckpt_dir), logger=logger)
-    vae_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=Path(dirs.get('ckpt', cfg.dirs.ckpt_dir)) / 'vae' , logger=logger)
-    vae_optimizer = torch.optim.Adam(vae.parameters(), **cfg.optimizer.params)
-    try:
-        # Load the state dictionary from the latest checkpoint file
-        vae, vae_optimizer, scheduler, last_epoch, global_step = vae_checkpoint_manager.load_latest(
-            vae, vae_optimizer, map_location=device)
-        print("Successfully loaded VAE weights.")
-    except FileNotFoundError:
-        print(f"ERROR: No VAE checkpoint found in '{(Path(dirs.get('ckpt', cfg.dirs.ckpt_dir)) / 'vae')}'.")
-        print("Please run the 'train_vae' task first to generate a checkpoint.")
-        return
     global_step = 0
     start_epoch = 1
 
@@ -113,7 +101,7 @@ def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, logger,
             # --- Visualization: Generate Samples in Latent Space, Decode, Log ---
             if epoch % cfg.training.log_every_epoch == 0:
                 model.eval()
-                real_batch = next(iter(train_loader))
+                real_batch = next(iter(val_loader))
                 real_batch = real_batch['image'].to(device)
 
                 # Generate samples in latent space using UNet, then decode to image

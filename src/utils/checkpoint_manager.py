@@ -274,7 +274,7 @@ class CheckpointManager:
             raise FileNotFoundError(f"Checkpoint file not found: {filepath}")
 
         # Load checkpoint dict
-        checkpoint = torch.load(filepath, map_location=map_location)
+        checkpoint = torch.load(filepath, map_location='cpu')
 
         # Validate keys
         if "model_state_dict" not in checkpoint or "epoch" not in checkpoint:
@@ -301,7 +301,22 @@ class CheckpointManager:
         if "torch_rng" in checkpoint:
             torch.set_rng_state(checkpoint["torch_rng"])
         if "cuda_rng" in checkpoint and torch.cuda.is_available():
-            torch.cuda.set_rng_state_all(checkpoint["cuda_rng"])
+            cuda_rng_states = checkpoint["cuda_rng"]
+            if len(cuda_rng_states) != torch.cuda.device_count():
+                if self.logger:
+                    self.logger.warning(
+                        f"⚠️ Checkpoint RNG states ({len(cuda_rng_states)}) do not match available GPUs ({torch.cuda.device_count()}). Skipping CUDA RNG restoration.")
+            else:
+                # The state must be a ByteTensor (uint8) on the correct CUDA device.
+                # Since we loaded to CPU, we must move it back.
+                try:
+                    states_on_cuda = [state.to(f'cuda:{i}', dtype=torch.uint8) for i, state in
+                                      enumerate(cuda_rng_states)]
+                    torch.cuda.set_rng_state_all(states_on_cuda)
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"⚠️ Could not restore CUDA RNG state due to an error: {e}. Skipping.")
+
         if "numpy_rng" in checkpoint:
             np.random.set_state(checkpoint["numpy_rng"])
         if "python_rng" in checkpoint:

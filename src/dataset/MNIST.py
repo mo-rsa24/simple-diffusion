@@ -41,7 +41,7 @@ class MNISTDataset(Dataset):
 
 
 def get_mnist_loaders(cfg: Config, number: int = None):
-    transform = mnist_transform(cfg.dataset.image_size)
+    transform = mnist_transform(cfg)
     dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="train", number=number, transform=transform)
     if cfg.sanity_checks.debug:
         from src.dataset.utils import tiny_subset
