@@ -46,10 +46,14 @@ class MNISTDataset(Dataset):
 def get_mnist_loaders(cfg: Config, number: int = None):
     transform = mnist_transform(cfg.dataset.image_size)
     dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="train", number=number, transform=transform)
+    if cfg.sanity_checks.debug:
+        from src.dataset.utils import tiny_subset
+        dataset = tiny_subset(dataset, cfg.sanity_checks.num_examples)
     val_dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="val", number=number, transform=transform)
     test_dataset = MNISTDataset(root_dir=cfg.dataset.data_dir, split="test", number=number, transform=transform)
 
     train_loader = DataLoader(dataset, batch_size=cfg.dataset.batch_size, shuffle=True, num_workers=cfg.dataset.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=cfg.dataset.batch_size, shuffle=False, num_workers=cfg.dataset.num_workers)
     test_loader = DataLoader(test_dataset, batch_size=cfg.dataset.batch_size, shuffle=False, num_workers=cfg.dataset.num_workers)
+
     return train_loader, val_loader, test_loader

@@ -81,7 +81,7 @@ optimizer:
     weight_decay: 0.0
 
 diffusion:
-  timesteps: 1000
+  timesteps: 200
   loss_type: "l2"
   beta_start: 0.0001
   ema_decay: 0.9999
@@ -96,16 +96,16 @@ diffusion:
 #  resume_from: false
 
 training:
-  epochs: 25
-  log_every_step: 16
-  log_every_epoch: 5
-  save_every_step: 16
-  save_every_epoch: 5
+  epochs: 100
+  log_every_step: 32
+  log_every_epoch: 20
+  save_every_step: 32
+  save_every_epoch: 20
   resume_from: false
 
 sanity_checks:
   debug: True
-  num_examples: 16
+  num_examples: 32
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD"

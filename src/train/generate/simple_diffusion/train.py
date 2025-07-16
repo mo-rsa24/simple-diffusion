@@ -76,9 +76,11 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
                     timesteps=cfg.diffusion.timesteps,
                     beta_start=cfg.diffusion.beta_start,
                     beta_end=cfg.diffusion.beta_end,
-                )
+                ) #  inside = sqrt(alpha_bar) * x0 + sqrt(1-alpha_bar) * noise
                 with autocast():
-                  pred_noise = model(x_noisy, t)
+                  pred_noise = model(x_noisy, t) # e_theta (inside)
+
+
 
                 # 3) cast back to FP32 for loss
                 pred_noise = pred_noise.float()
@@ -114,13 +116,10 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
 
             model.eval()
-            real_batch, real_labels = next(iter(train_loader))
-            real_batch = real_batch.to(device)
+            real_batch = next(iter(train_loader))
+            real_batch = real_batch['image'].to(device)
 
-            conds = torch.arange(0, cfg.dataset.num_classes, device=device).long()
-            conds = conds.repeat(cfg.sampling.batch_size // cfg.dataset.num_classes + 1)[:cfg.sampling.batch_size]
-
-            generated = ddpm_sampler(model, cfg, device, conds)
+            generated = ddpm_sampler(model, cfg, device)
             if epoch % cfg.training.log_every_epoch == 0:
                 visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
 

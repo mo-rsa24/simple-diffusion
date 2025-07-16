@@ -29,7 +29,6 @@ def ddpm_sampler(model, cfg, device, conds=None):
     Standard DDPM sampler for noise-prediction models like UNet and CompositionalUNet.
     """
     constants = get_diffusion_constants(cfg, device)
-    betas = constants["betas"]
     alphas = constants["alphas"]
     alphas_cumprod = constants["alphas_cumprod"]
 
