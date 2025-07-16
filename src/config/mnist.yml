@@ -25,6 +25,24 @@ model:
       type: vp
       beta_min: 0.1
       beta_max: 20.0
+  vae:
+    ddconfig:
+      double_z: True
+      z_channels: 4
+      resolution: 28 # Input image resolution
+      in_channels: 1 # Grayscale for MNIST
+      out_ch: 1
+      ch: 128
+      ch_mult: [ 1, 2, 4 ] # For 32x32, 3 levels of down/upsampling is typical
+      num_res_blocks: 2
+      attn_resolutions: [ 16 ] # Apply attention at the 16x16 feature map level
+      dropout: 0.0
+    lossconfig:
+      target: torch.nn.Identity
+      params:
+        kl_weight: 0.000005 # A small but non-zero KL weight is crucial
+        logvar_init: 0.0
+    embed_dim: 4 # Should match z_channels
   ldm:
     dim: 64
     init_dim: 64
@@ -76,7 +94,8 @@ model:
 optimizer:
   type: "Adam"
   params:
-    lr: !!float "2e-4"
+#    lr: !!float "2e-4"
+    lr: 0.001
     betas:      [0.9, 0.999]
     weight_decay: 0.0
 
@@ -96,16 +115,16 @@ diffusion:
 #  resume_from: false
 
 training:
-  epochs: 100
-  log_every_step: 32
-  log_every_epoch: 20
-  save_every_step: 32
-  save_every_epoch: 20
+  epochs: 50
+  log_every_step: 16
+  log_every_epoch: 10
+  save_every_step: 16
+  save_every_epoch: 10
   resume_from: false
 
 sanity_checks:
   debug: True
-  num_examples: 32
+  num_examples: 16
 
 dirs:
   cluster_base: "/gluster/mmolefe/PhD"
@@ -117,6 +136,10 @@ dirs:
     samples: "./samples"
     side_by_side: "./side_by_side"
     feature_maps: "./feature_maps"
+    latent_prior: "./latent_prior"
+    latent_space: "./latent_space"
+    reconstruction_error_distribution: "./latent_space"
+    prior_samples: "./prior_samples"
     tsne: "./tsne"
   tensorboard_dir: "./tensorboard"
   wandb_dir: "./wandb"

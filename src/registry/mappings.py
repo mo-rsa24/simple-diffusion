@@ -8,7 +8,7 @@ from src.models.composable_architectures import CompositionalUNet, CascadedDiffu
     ClassifierGuidedUNet
 from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.edm.EDM import EDMUNet
-from src.models.ldm.autoencoder import SimpleConvEncoder, SimpleConvDecoder
+from src.models.ldm.autoencoder import AutoencoderKL, Decoder, Encoder
 from src.models.slot_diffusion.SlotDiffusionUNet import SlotDiffusionUNet
 from src.models.vanilla.unet import Unet
 from src.models.vpsde.ScoreSdeUNet import ScoreSdeUNet
@@ -49,10 +49,11 @@ GENERATION_MODEL_REGISTRY = {
     "vanilla": {
         "unet": Unet
     },
+    "vae": {
+        "vae": AutoencoderKL
+    },
     "ldm": {
         "unet": Unet,
-        "encoder": SimpleConvEncoder,
-        "decoder": SimpleConvDecoder,
     },
     "slot": {
         "unet": SlotDiffusionUNet,

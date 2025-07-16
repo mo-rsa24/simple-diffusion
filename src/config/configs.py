@@ -50,6 +50,7 @@ class ModelConfig:
     edm: Dict[str, Any]
     slot: Dict[str, Any]
     vanilla: Dict[str, Any]
+    vae: Dict[str, Any]
     composable: Dict[str, Any]
     comp_unet: Dict[str, Any]
     cascaded: Dict[str, Any]

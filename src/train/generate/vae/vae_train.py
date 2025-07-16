@@ -2,32 +2,27 @@ from pathlib import Path
 from typing import Dict
 
 import torch
-import torch.nn.functional as F
+from tqdm import tqdm
+
 from src.config.configs import Config
-from src.models.vanilla.ema import EMA
-from src.models.vanilla.unet import Unet
+from src.models.ldm.autoencoder import AutoencoderKL
 from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.train.logging.training_logger_utils import log_training_start, log_epoch_start, log_batch, log_epoch_summary, \
-    visualize_epoch, log_json, log_training_end
-from src.utils.calculations import q_sample
+     log_json, log_training_end, visualize_vae
 from src.utils.checkpoint_manager import CheckpointManager
 from datetime import timedelta
 import time
 from torch.optim import Adam
-from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 
-from src.utils.sampling import ddpm_sampler
 
-
-def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
+def train(cfg: Config, dirs: Dict, model: AutoencoderKL, train_loader: DataLoader, val_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     model.train()
     if cfg.optimizer.type.lower() == "adam":
         optimizer = Adam(model.parameters(), **cfg.optimizer.params)
     else:
         raise ValueError(f"Unsupported optimizer: {cfg.optimizer.type}")
     scheduler = None  # add if needed
-    scaler = GradScaler()
     start_time = time.time()
     log_training_start(
         logger,
@@ -57,70 +52,50 @@ def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoad
         for epoch in range(start_epoch, cfg.training.epochs + 1):
             epoch_start = time.time()
             log_epoch_start(epoch - 1, logger)
+            total_loss, total_recon_loss, total_kl_loss = 0, 0, 0
 
-            running_loss = 0.0
-            for step, train_batch in enumerate(train_loader, 1):
-                batch = train_batch['image']
-                batch_size = int(batch.shape[0])
-                batch = batch.to(device)
-                noise = torch.randn_like(batch)
-                t = torch.randint(0, cfg.diffusion.timesteps, (batch_size, ), device=device).long()
-
+            for step, train_batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch} [VAE Training]"), 1):
                 optimizer.zero_grad()
+                images = train_batch['image'].to(device)
 
-                x_noisy = q_sample(
-                    x_start=batch,
-                    t=t,
-                    noise=noise,
-                    timesteps=cfg.diffusion.timesteps,
-                    beta_start=cfg.diffusion.beta_start,
-                    beta_end=cfg.diffusion.beta_end,
-                ) #  inside = sqrt(alpha_bar) * x0 + sqrt(1-alpha_bar) * noise
-                with autocast():
-                  pred_noise = model(x_noisy, t) # e_theta (inside)
+                reconstructions, posterior = model(images)
+                kl_loss = posterior.kl().mean()  # Average KL loss over the batch
+                # kl_loss = kl_loss.mean()  # Average KL loss over the batch
 
+                recon_loss = torch.nn.functional.mse_loss(reconstructions, images)
+                loss = recon_loss + model.kl_weight * kl_loss
+                loss.backward()
+                optimizer.step()
 
-
-                # 3) cast back to FP32 for loss
-                pred_noise = pred_noise.float()
-                if cfg.diffusion.loss_type == 'l1':
-                    loss = F.l1_loss(noise, pred_noise)
-                elif cfg.diffusion.loss_type == 'l2':
-                    loss = F.mse_loss(noise, pred_noise)
-                elif cfg.diffusion.loss_type == "huber":
-                    loss = F.smooth_l1_loss(noise, pred_noise)
-
-                # backward with the scaler
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-
-                # optional: free any cached fragments
-
-                ema.update()
                 torch.cuda.empty_cache()
+                # Log metrics
+                total_loss += loss.item()
+                total_recon_loss += recon_loss.item()
+                total_kl_loss += kl_loss.item()
 
-                running_loss += loss.item()
                 global_step += 1
 
                 # ── Periodic Logging ────────────────────────────────
                 if global_step % cfg.training.log_every_step == 0:
-                    log_batch(step, loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer,
+                    log_batch(step, total_loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer,
+                              wandb_tracker=wandb_run)
+                    log_batch(step, total_recon_loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer,
+                              wandb_tracker=wandb_run)
+                    log_batch(step, total_kl_loss, cfg.optimizer.params.get("lr", 0.0003), logger, writer=writer,
                               wandb_tracker=wandb_run)
                 if cfg.training.save_every_step and global_step % cfg.training.save_every_step == 0:
                     checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
-            avg_loss = running_loss / len(train_loader)
+            avg_loss = total_loss / len(train_loader)
+            avg_recon_loss = total_recon_loss / len(train_loader)
+            avg_kl_loss = total_kl_loss / len(train_loader)
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time=epoch_time)
+            log_epoch_summary(logger, epoch, cfg.training.epochs, avg_recon_loss, epoch_time=epoch_time)
+            log_epoch_summary(logger, epoch, cfg.training.epochs, avg_kl_loss, epoch_time=epoch_time)
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
 
             if epoch % cfg.training.log_every_epoch == 0:
-                model.eval()
-                real_batch = next(iter(train_loader))
-                real_batch = real_batch['image'].to(device)
-
-                generated = ddpm_sampler(model, cfg, device)
-                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
+                visualize_vae(epoch, model, val_loader, device, dirs, writer, wandb_run)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)

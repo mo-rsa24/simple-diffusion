@@ -4,8 +4,11 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Dict
 
+import numpy as np
 import torch
-from torchvision.utils import save_image
+import wandb
+from matplotlib import pyplot as plt
+from torchvision.utils import save_image, make_grid
 
 from .log import log_grid_images, log_table_wandb
 from ...utils.visualization import save_side_by_side_images
@@ -116,3 +119,114 @@ def visualize_epoch(generated: torch.Tensor, real: torch.Tensor,  dirs: Dict, ep
     # --- 4) W&B logging ---
     if wandb_run:
         log_table_wandb(generated, real, epoch, wandb_run)
+
+
+@torch.no_grad()
+def visualize_vae(epoch, vae_model, val_loader, device, dirs, writer, wandb_run=None):
+    """
+    Generates and logs a comprehensive suite of VAE visualizations.
+    """
+    side_by_side_dir: Path = dirs.get("results_side_by_side") / Path(f"epoch_{epoch}")
+    side_by_side_dir.mkdir(parents=True, exist_ok=True)
+
+
+    vae_model.eval()
+    print(f"\n--- Epoch {epoch}: Generating VAE visualizations ---")
+
+    # Get a fixed batch from validation set for consistent visualization
+    try:
+        val_batch = next(iter(val_loader))
+        images = val_batch['image'].to(device)
+    except StopIteration:
+        print("Validation loader is empty, skipping visualization.")
+        return
+
+    # --- 1. Reconstruction Quality Grid (Input -> Recon -> Residual) ---
+    reconstructions, posterior = vae_model(images)
+    residuals = (images - reconstructions).abs()
+    # Clamp residuals for better visibility
+    residuals = torch.clamp(residuals, 0, 1)
+    comparison_grid = torch.cat([images, reconstructions, residuals])
+    grid = make_grid(comparison_grid, nrow=images.size(0), normalize=True)
+    samples_dir: Path = dirs.get("results_samples") / Path(f"epoch_{epoch}")
+    samples_dir.mkdir(parents=True, exist_ok=True)
+    save_path = samples_dir / Path(f"vae_recons_epoch_{epoch}.png")
+    save_image(grid,save_path , normalize=False)
+
+    if writer:
+        writer.add_image('VAE/Reconstruction Quality', grid, epoch)
+    if wandb_run:
+        wandb_run.log({"VAE/Reconstruction Quality": wandb.Image(save_path)}, step=epoch)
+
+    # --- 2. Latent Prior vs. Posterior Histogram ---
+    mus, logvars = posterior.mean, posterior.logvar
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(mus.detach().cpu().numpy().flatten(), bins=50, alpha=0.7, label='Posterior µ', density=True)
+    ax.hist(torch.exp(0.5 * logvars).detach().cpu().numpy().flatten(), bins=50, alpha=0.7, label='Posterior σ',
+            density=True)
+    # Overlay standard normal for comparison
+    x = np.linspace(-3, 3, 100)
+    ax.plot(x, (1 / np.sqrt(2 * np.pi)) * np.exp(-0.5 * x ** 2), 'r--', label='Prior N(0,1)')
+    ax.legend()
+    ax.set_title(f'Latent Distribution - Epoch {epoch}')
+    latent_prior_dir: Path = dirs.get("results_latent_prior") / Path(f"epoch_{epoch}")
+    latent_prior_dir.mkdir(parents=True, exist_ok=True)
+    save_path = latent_prior_dir /Path(f"vae_latent_prior_epoch_{epoch}.png")
+    plt.savefig(save_path)
+    if writer:
+        writer.add_figure('VAE/Latent Distribution', fig, epoch)
+    if wandb_run:
+        wandb_run.log({"VAE/Latent Distribution": wandb.Image(save_path)}, step=epoch)
+    plt.close(fig)
+
+    # --- 3. Random Samples from Prior ---
+    z_channels = vae_model.decoder.z_channels
+    latent_h = images.shape[2] // (2 ** len(vae_model.encoder.down))
+    latent_w = images.shape[3] // (2 ** len(vae_model.encoder.down))
+    z = torch.randn(images.size(0), z_channels, latent_h, latent_w, device=device)
+    prior_samples = vae_model.decode(z)
+    grid = make_grid(prior_samples, nrow=images.size(0), normalize=True)
+    prior_samples_dir: Path = dirs.get("results_prior_samples") / Path(f"epoch_{epoch}")
+    prior_samples_dir.mkdir(parents=True, exist_ok=True)
+    save_path = prior_samples_dir / Path(f"vae_prior_samples_epoch_{epoch}.png")
+    save_image(grid, save_path)
+    if writer:
+        writer.add_image('VAE/Prior Samples', grid, epoch)
+    if wandb_run:
+        wandb_run.log({"VAE/Prior Samples": wandb.Image(save_path)}, step=epoch)
+
+    # --- 4. Latent Space Perturbations ---
+    base_z = mus[0:1]  # Use the latent vector of the first image
+    all_perts = [images[0:1]]  # Start with the original image
+    for sigma in [0.1, 0.5, 1.0, 2.0]:
+        z_perturbed = base_z + sigma * torch.randn_like(base_z)
+        decoded_pert = vae_model.decode(z_perturbed)
+        all_perts.append(decoded_pert)
+    pert_grid = make_grid(torch.cat(all_perts), nrow=len(all_perts), normalize=True)
+    latent_space_dir: Path = dirs.get("results_latent_space") / Path(f"epoch_{epoch}")
+    latent_space_dir.mkdir(parents=True, exist_ok=True)
+    save_path = latent_space_dir / Path(f"vae_perturbations_epoch_{epoch}.png")
+    save_image(pert_grid, save_path)
+    if writer:
+        writer.add_image('VAE/Latent Perturbations (σ=0, 0.1, 0.5, 1.0, 2.0)', pert_grid, epoch)
+    if wandb_run:
+        wandb_run.log({"VAE/Latent Perturbations": wandb.Image(save_path)}, step=epoch)
+
+    # --- 5. Reconstruction Error Distribution ---
+    recon_errors = (images - reconstructions).pow(2).mean(dim=[1, 2, 3]).detach().cpu().numpy()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.hist(recon_errors, bins=30)
+    ax.set_title(f'Reconstruction Error (MSE) Distribution - Epoch {epoch}')
+    ax.set_xlabel('Per-Image MSE')
+    ax.set_ylabel('Frequency')
+    reconstruction_error_distribution_dir: Path = dirs.get("results_reconstruction_error_distribution") / Path(f"epoch_{epoch}")
+    reconstruction_error_distribution_dir.mkdir(parents=True, exist_ok=True)
+    save_path = reconstruction_error_distribution_dir / Path(f"vae_recon_error_dist_epoch_{epoch}.png")
+    plt.savefig(save_path)
+    if writer:
+        writer.add_figure('VAE/Reconstruction Error Distribution', fig, epoch)
+    if wandb_run:
+        wandb_run.log({"VAE/Reconstruction Error Distribution": wandb.Image(save_path)}, step=epoch)
+    plt.close(fig)
+
+    print("All VAE visualizations generated and saved.")

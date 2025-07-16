@@ -265,7 +265,6 @@ def ldm_sampler(ldm_unet, vae, cfg, device, conds=None):
     latent_size = cfg.dataset.image_size // 8  # Common downsampling factor
 
     constants = get_diffusion_constants(cfg, device)
-    betas = constants["betas"]
     alphas = constants["alphas"]
     alphas_cumprod = constants["alphas_cumprod"]
     timesteps = cfg.diffusion.timesteps

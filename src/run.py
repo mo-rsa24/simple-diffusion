@@ -29,6 +29,7 @@ def parse_args():
         choices=[
             "vanilla",
             "ldm",
+            "vae",
             "slot",
             "edm",
             "vpsde",
@@ -124,18 +125,21 @@ if __name__ == "__main__":
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.simple_diffusion.train import train as pixel_train
                 pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
+            elif args.gen_model == "vae":
+                model_params = dict(cfg.model.vae)  # copy so we don't modify original config
+                model = GENERATION_MODEL_REGISTRY["vae"]["vae"](**model_params).to(device)
+                from src.train.generate.vae.vae_train import train as vae_train
+                vae_train(cfg, dirs, model, train_loader, val_loader,  logger, device, writer, wandb_run)
             elif args.gen_model == "ldm":
                 model_params = dict(cfg.model.ldm)  # copy so we don't modify original config
                 latent_dim = model_params.pop("latent_dim")# fallback if missing
                 model_params["channels"] = latent_dim
-                encoder = GENERATION_MODEL_REGISTRY["ldm"]["encoder"](
-                    in_channels=cfg.dataset.channels, latent_dim=latent_dim).to(device)
-                decoder = GENERATION_MODEL_REGISTRY["ldm"]["decoder"](
-                    latent_dim=latent_dim, out_channels=cfg.dataset.channels).to(device)
+                vae_params = dict(cfg.model.vae)
+                vae = GENERATION_MODEL_REGISTRY["vae"]["vae"](**vae_params).to(device)
                 model = GENERATION_MODEL_REGISTRY["ldm"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.ldm.ldm_train import train as ldm_train
-                ldm_train(cfg, dirs, model, ema, encoder, decoder, train_loader, logger, device, writer, wandb_run)
+                ldm_train(cfg, dirs, model, ema, vae, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "slot":
                 model_params = dict(cfg.model.slot)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["slot"]["unet"](**model_params).to(device)
