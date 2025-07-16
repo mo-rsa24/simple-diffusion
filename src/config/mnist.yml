@@ -26,7 +26,7 @@ training: &default_training
 optimizer: &default_optimizer
   type: Adam
   params:
-    lr: 0.0002
+    lr: !!float "2e-4"
     betas: [0.9, 0.999]
 
 # --- Default Training Settings ---
@@ -42,8 +42,22 @@ logging: &default_logging
   use_wandb: false
   use_tensorboard: false
 
+# --- Default Sanity---
+sanity: &default_sanity
+  enabled: False
+  num_examples: 10
 
-dirs:
+# --- Default Sampling---
+sampling: &default_sampling
+  batch_size: 4
+  channels: 1
+  blit: true
+  repeat_delay: 1000
+  edm_sampler:
+    params: { }
+
+# --- Default Dirs---
+dirs: &default_dirs
   cluster_base: "/gluster/mmolefe/PhD"
   local_base: .
   ckpt_dir: "./checkpoints"
@@ -51,7 +65,6 @@ dirs:
   results_dir:
     base: "./results"
     samples: "./samples"
-    side_by_side: "./side_by_side"
   tensorboard_dir: "./tensorboard"
   wandb_dir: "./wandb"
 
@@ -64,6 +77,9 @@ model:
   vanilla:
     # Vanilla Unet uses the default dataset and training settings.
     # We only override the learning rate.
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
     optimizer:
       params:
         lr: 0.0003
@@ -101,8 +117,10 @@ model:
       embed_dim: 4
 
   ldm:
-    # The LDM's Unet has its own architecture.
-    # It will use the pre-trained VAE, so it doesn't need VAE params.
+    # The LDM's Unet has its own architecture. # It will use the pre-trained VAE, so it doesn't need VAE params.
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
     optimizer:
       params:
         lr: 0.0001
@@ -130,15 +148,12 @@ profiles:
     dataset:
       batch_size: 4 # Use a very small batch size
     diffusion:
-      timesteps: 200
+      timesteps: 500
     training:
-      epochs: 10 # Only run for a few epochs
-      log_every_step: 4 # Log every single step
-      log_every_epoch: 2
-      save_every_epoch: 10
-    optimizer:
-      params:
-        lr: 0.01 # Use a high learning rate to force quick changes
+      epochs: 200 # Only run for a few epochs
+      log_every_step: 4 # Log every single step. Should be same as num_examples
+      log_every_epoch: 50
+      save_every_epoch: 100
 
   debug:
     # The 'debug' profile disables logging for faster local iteration.

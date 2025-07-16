@@ -1,14 +1,90 @@
-from pathlib import Path
+import collections
+import collections.abc
 import torch
 import wandb
-import yaml
 from src.config.configs import Config, TrainingConfig, LoggingConfig, ObservabilityConfig, DiffusionConfig, ModelConfig, \
     OptimizerConfig, DatasetConfig, DirsConfig, SamplingConfig, SanityCheckConfig
 from src.utils.env import is_cluster
 from src.utils.logger import init_logger
+from box import Box
+import yaml
+from pathlib import Path
+from typing import Dict, Optional
 
 
-def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate") -> Config:
+def deep_merge_dicts(d1: Dict, d2: Dict) -> Dict:
+    """Recursively merges dictionary d2 into a copy of d1."""
+    d1 = d1.copy()
+    for k, v in d2.items():
+        if k in d1 and isinstance(d1.get(k), dict) and isinstance(v, collections.abc.Mapping):
+            d1[k] = deep_merge_dicts(d1[k], v)
+        else:
+            d1[k] = v
+    return d1
+
+def load_config(
+    config_path: str,
+    experiment_id: str,
+    run_id: int,
+    task: str,
+    gen_model: str,
+    profile_name: str = "default" # Default to the 'default' profile
+) -> Box:
+    """
+    Loads and merges configurations from the user-provided YAML structure.
+
+    Merge Order:
+    1. Base config (all top-level keys except 'model' and 'profiles').
+    2. Model-specific overrides (`model.<gen_model>`).
+    3. Profile-specific overrides (`profiles.<profile_name>`).
+    """
+    config_path = Path(config_path)
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Config file not found at: {config_path}")
+
+    # PyYAML automatically handles anchors (&) and aliases (*)
+    with open(config_path, 'r') as f:
+        full_config = yaml.safe_load(f) or {}
+
+    # 1. Start with the base configuration (everything except model and profiles)
+    base_cfg = {k: v for k, v in full_config.items() if k not in ['model', 'profiles']}
+
+    # 2. Merge in the model-specific overrides
+    model_specific_cfg = full_config.get('model', {}).get(gen_model)
+    if model_specific_cfg:
+        print(f"Applying overrides for model: '{gen_model}'")
+        merged_cfg = deep_merge_dicts(base_cfg, model_specific_cfg)
+    else:
+        print(f"Warning: Model '{gen_model}' not found in config. Using base settings.")
+        merged_cfg = base_cfg
+
+    # 3. ✨ Apply profile-specific overrides intelligently
+    profile_cfg = full_config.get('profiles', {}).get(profile_name)
+    if profile_cfg:
+        print(f"Applying overrides for profile: '{profile_name}'")
+        for key, value in profile_cfg.items():
+            # Case 1: Override a top-level block like 'dataset' or 'training'.
+            if key in merged_cfg and isinstance(merged_cfg.get(key), dict):
+                merged_cfg[key] = deep_merge_dicts(merged_cfg[key], value)
+            # Case 2: Override a key within the top-level 'sanity' block.
+            elif 'sanity' in merged_cfg and key in merged_cfg['sanity']:
+                merged_cfg['sanity'][key] = value
+            # Case 3: A new key, like 'description'. Add it to the root.
+            else:
+                merged_cfg[key] = value
+    # --- Preserve original model block and add runtime args ---
+    merged_cfg['model'] = full_config.get('model', {}) # Keep original model block
+
+    # Add runtime arguments for easy access
+    merged_cfg['experiment_id'] = experiment_id
+    merged_cfg['run_id'] = run_id
+    merged_cfg['task'] = task
+    merged_cfg['gen_model'] = gen_model
+    merged_cfg['profile'] = profile_name
+
+    return Box(merged_cfg, default_box=True)
+
+def load_config_(path: str, experiment_id: str, run_id:str, task: str = "generate") -> Config:
     with open(path) as f:
         data = yaml.safe_load(f)
     return Config(
@@ -27,42 +103,6 @@ def load_config(path: str, experiment_id: str, run_id:str, task: str = "generate
         sampling      = SamplingConfig(**data["sampling"]),
         sanity_checks = SanityCheckConfig(**data["sanity_checks"])
     )
-
-
-# def build_dirs(cfg: Config, base_dir: Optional[str] = None) -> dict:
-#     root_base = Path(cfg.dirs.cluster_base if is_cluster() else cfg.dirs.local_base)
-#     experiment = f"experiment_{cfg.experiment_id}"
-#     run = f"run_{cfg.run_id}"
-#
-#     paths = {}
-#
-#     # 1) Root-level folders
-#     for key, attr in [
-#         ("ckpt", cfg.dirs.ckpt_dir),
-#         ("logs", cfg.dirs.logs_dir),
-#         ("tb", cfg.dirs.tensorboard_dir),
-#         ("wandb", cfg.dirs.wandb_dir),
-#     ]:
-#         abs_path = root_base / Path(attr) / cfg.task / experiment / run
-#         abs_path.mkdir(parents=True, exist_ok=True)
-#         paths[key] = abs_path
-#
-#     # 2) Results subfolders
-#     results_cfg = cfg.dirs.results_dir
-#     results_base = root_base / Path(results_cfg["base"]) / experiment / run
-#     results_base.mkdir(parents=True, exist_ok=True)
-#     paths["results_base"] = results_base
-#
-#     for name, rel_path in results_cfg.items():
-#         if name == "base":
-#             continue
-#         full_path = results_base / Path(rel_path).name
-#         full_path.mkdir(parents=True, exist_ok=True)
-#         paths[f"results_{name}"] = full_path
-#
-#     return paths
-
-from typing import Optional
 
 def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "vanilla") -> dict:
     if base_dir is not None:

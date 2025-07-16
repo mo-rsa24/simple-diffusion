@@ -106,7 +106,7 @@ def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, val_loa
 
                 # Generate samples in latent space using UNet, then decode to image
                 with torch.no_grad():
-                    generated = ldm_sampler(model, cfg, device)
+                    generated = ldm_sampler(model, vae, cfg, device)
                 visualize_epoch(generated[:cfg.sampling.batch_size], real_batch[:cfg.sampling.batch_size], dirs, epoch, wandb_run, writer)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:

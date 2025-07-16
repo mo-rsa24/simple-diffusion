@@ -126,10 +126,6 @@ def visualize_vae(epoch, vae_model, val_loader, device, dirs, writer, wandb_run=
     """
     Generates and logs a comprehensive suite of VAE visualizations.
     """
-    side_by_side_dir: Path = dirs.get("results_side_by_side") / Path(f"epoch_{epoch}")
-    side_by_side_dir.mkdir(parents=True, exist_ok=True)
-
-
     vae_model.eval()
     print(f"\n--- Epoch {epoch}: Generating VAE visualizations ---")
 

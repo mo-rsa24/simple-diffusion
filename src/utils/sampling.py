@@ -261,7 +261,7 @@ def ldm_sampler(ldm_unet, vae, cfg, device, conds=None):
     Operates in latent space and decodes at the end.
     """
     # The DDPM sampling logic is identical, but happens in the latent space
-    latent_channels = vae.config.latent_channels
+    latent_channels = vae.encoder.z_channels
     latent_size = cfg.dataset.image_size // 8  # Common downsampling factor
 
     constants = get_diffusion_constants(cfg, device)
@@ -296,7 +296,7 @@ def ldm_sampler(ldm_unet, vae, cfg, device, conds=None):
     # Decode the final latents back to pixel space
     # The scaling factor is specific to the VAE used (e.g., Stability AI's)
     latents = latents / 0.18215
-    images = vae.decode(latents).sample
+    images = vae.decode(latents)
     return images
 
 
@@ -306,7 +306,6 @@ def classifier_guided_sampler(model, classifier, cfg, device, conds=None, guidan
     DDPM sampler with classifier guidance.
     """
     constants = get_diffusion_constants(cfg, device)
-    betas = constants["betas"]
     alphas = constants["alphas"]
     alphas_cumprod = constants["alphas_cumprod"]
     posterior_variance = constants["posterior_variance"]

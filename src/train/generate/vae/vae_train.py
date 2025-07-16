@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Dict
 
 import torch
+from box import Box
 from tqdm import tqdm
 
 from src.config.configs import Config
@@ -16,7 +17,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 
-def train(cfg: Config, dirs: Dict, model: AutoencoderKL, train_loader: DataLoader, val_loader: DataLoader, logger, device, writer = None, wandb_run = None):
+def train(cfg: Box, dirs: Dict, model: AutoencoderKL, train_loader: DataLoader, val_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     model.train()
     if cfg.optimizer.type.lower() == "adam":
         optimizer = Adam(model.parameters(), **cfg.optimizer.params)

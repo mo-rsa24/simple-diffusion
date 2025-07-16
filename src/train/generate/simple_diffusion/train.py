@@ -3,6 +3,8 @@ from typing import Dict
 
 import torch
 import torch.nn.functional as F
+from box import Box
+
 from src.config.configs import Config
 from src.models.vanilla.ema import EMA
 from src.models.vanilla.unet import Unet
@@ -20,7 +22,7 @@ from torch.utils.data import DataLoader
 from src.utils.sampling import ddpm_sampler
 
 
-def train(cfg: Config, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
+def train(cfg: Box, dirs: Dict, model: Unet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     model.train()
     if cfg.optimizer.type.lower() == "adam":
         optimizer = Adam(model.parameters(), **cfg.optimizer.params)

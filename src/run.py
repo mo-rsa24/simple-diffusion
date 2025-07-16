@@ -2,8 +2,6 @@ import argparse
 import os
 from pathlib import Path
 import torch
-
-from src.config.con import ConfigLoader
 from src.models.ldm.autoencoder import AutoencoderKL
 from src.models.vanilla.ema import EMA
 from src.monitoring.alert_notifier import send_failure_email
@@ -66,8 +64,15 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     config_path = f"src/config/{args.dataset.lower()}.yml"
-    loader = ConfigLoader(default_config_path=config_path)
-    cfg = load_config(config_path, args.experiment_id, args.run_id, task=args.task)
+    # cfg = load_config(config_path, args.experiment_id, args.run_id, task=args.task)
+    cfg = load_config(
+        config_path=config_path,
+        experiment_id=args.experiment_id,
+        run_id=args.run_id,
+        task=args.task,
+        gen_model=args.gen_model,
+        profile_name=args.profile
+    )
     if args.log_level:
         cfg.logging.log_level = args.log_level
     cfg.logging.use_wandb = args.use_wandb or cfg.logging.use_wandb
@@ -133,19 +138,20 @@ if __name__ == "__main__":
                 from src.train.generate.simple_diffusion.train import train as pixel_train
                 pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "vae":
-                model_params = dict(cfg.model.vae)  # copy so we don't modify original config
+                model_params = dict(cfg.model.vae.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vae"]["vae"](**model_params).to(device)
                 from src.train.generate.vae.vae_train import train as vae_train
                 vae_train(cfg, dirs, model, train_loader, val_loader,  logger, device, writer, wandb_run)
             elif args.gen_model == "ldm":
-                model_params = dict(cfg.model.ldm)  # copy so we don't modify original config
+                model_params = dict(cfg.model.ldm.architecture)  # copy so we don't modify original config
 
-                vae_params = dict(cfg.model.vae)
+                vae_params = dict(cfg.model.vae.architecture)
                 vae: AutoencoderKL = GENERATION_MODEL_REGISTRY["vae"]["vae"](**vae_params).to(device)
                 vae_path = Path(Path(dirs.get('ckpt', cfg.dirs.ckpt_dir)).__str__().replace('ldm', 'vae'))
-                vae_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=vae_path, logger=logger)
-                vae_optimizer = torch.optim.Adam(vae.parameters(), **cfg.optimizer.params)
                 try:
+                    vae_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=vae_path,
+                                                               logger=logger)
+                    vae_optimizer = torch.optim.Adam(vae.parameters(), **cfg.optimizer.params)
                     vae, vae_optimizer, scheduler, last_epoch, global_step = vae_checkpoint_manager.load_latest(
                         vae, vae_optimizer, map_location=device)
                 except Exception as e:
