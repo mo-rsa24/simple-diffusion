@@ -10,6 +10,7 @@ from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.edm.EDM import EDMUNet
 from src.models.ldm.autoencoder import AutoencoderKL, Decoder, Encoder
 from src.models.slot_diffusion.SlotDiffusionUNet import SlotDiffusionUNet
+from src.models.vanilla.composable_unet import ComposableUnet
 from src.models.vanilla.unet import Unet
 from src.models.vpsde.ScoreSdeUNet import ScoreSdeUNet
 
@@ -49,11 +50,17 @@ GENERATION_MODEL_REGISTRY = {
     "vanilla": {
         "unet": Unet
     },
+    "composable_vanilla": {
+        "unet": ComposableUnet
+    },
     "vae": {
         "vae": AutoencoderKL
     },
     "ldm": {
         "unet": Unet,
+    },
+    "composable_ldm": {
+        "unet": ComposableUnet,
     },
     "slot": {
         "unet": SlotDiffusionUNet,

@@ -1,3 +1,5 @@
+from box import Box
+
 from src.config.configs import Config
 from src.dataset.ChestXRay import ChestXrayDataset
 from src.dataset.transforms import build_preprocessing, safe_augmentation
@@ -54,18 +56,21 @@ def get_mnist_loaders(name: str = "MNIST", batch_size: int = 128):
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
 
-def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foreground", root="./data", number: int = None, task: str = "classify")-> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_colored_loaders(cfg: Box, dataset:str = "MNIST", variant: str="foreground", root="./data", number: int = None, task: str = "classify")-> Tuple[DataLoader, DataLoader, DataLoader]:
     """Return train/val/test DataLoaders for MNIST or FashionMNIST."""
+    transform_list = []
+    transform_list.append(transforms.ToTensor())
     if task == "classify":
         transform = transforms.Compose([
             transforms.ToTensor(),                 # (0,1) → tensor
             transforms.Normalize((0.1307,), (0.3081,))  # μ, σ of MNIST
         ])
     elif task == "generate":
-        transform = transforms.Compose([
-            transforms.ToTensor(), # (0,1) -> [-1, 1]
-            transforms.Lambda(lambda x: x * 2. - 1.)
-        ])
+        if cfg.dataset.image_size > 28:
+            pad_amount = (cfg.dataset.image_size - 28) // 2
+            transform_list.append(transforms.Pad(pad_amount))
+        transform_list.append(transforms.Normalize((0.5,), (0.5,)))
+        transform = transforms.Compose(transform_list)
     if dataset == "MNIST_BBOX":
         from src.dataset.ColoredMNISTWithBBox import ColoredMNISTWithBBox
         train_ds = ColoredMNISTWithBBox(root=root, train=True, variant=variant, number=number, transform=transform)
@@ -78,7 +83,9 @@ def get_colored_loaders(cfg: Config, dataset:str = "MNIST", variant: str="foregr
     train_len = int(0.9 * len(train_ds))
     val_len   = len(train_ds) - train_len
     train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
-
+    if cfg.sanity.enabled:
+        train_ds = tiny_subset(train_ds, cfg.sanity.num_examples)
+        val_ds = tiny_subset(val_ds, cfg.sanity.num_examples)
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
@@ -87,24 +94,27 @@ def tiny_subset(dataset: Dataset, num_items: int = 8) -> Subset:
     indices = list(range(min(len(dataset), num_items)))
     return Subset(dataset, indices)
 
-def get_composable_loaders(cfg: Config, variant: str="foreground", number: int = None,) -> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_composable_loaders(cfg: Box, variant: str="foreground", number: int = None,) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Dataloaders for ComposableColoredMNISTWithBBox."""
     from src.dataset.ComposableColoredMNISTWithBBox import ComposableColoredMNISTWithBBox
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x * 2. - 1.)
-    ])
+    transform_list = []
+    transform_list.append(transforms.ToTensor())
+    if cfg.dataset.image_size > 28:
+        pad_amount = (cfg.dataset.image_size - 28) // 2
+        transform_list.append(transforms.Pad(pad_amount))
+    transform_list.append(transforms.Normalize((0.5,), (0.5,)))
+
+    transform = transforms.Compose(transform_list)
     train_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=True, variant=variant, transform=transform, number=number)
     test_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=False, variant=variant, transform=transform, number=number)
     train_len = int(0.9 * len(train_ds))
     val_len = len(train_ds) - train_len
     train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
+    if cfg.sanity.enabled:
+        train_ds = tiny_subset(train_ds, cfg.sanity.num_examples)
+        val_ds = tiny_subset(val_ds, cfg.sanity.num_examples)
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
-    if cfg.sanity_checks.debug:
-        train_loader = loader(tiny_subset(train_ds, cfg.sanity_checks.num_examples), False)
-    else:
-        train_loader = loader(train_ds, True)
-    return train_loader, loader(val_ds, False), loader(test_ds, False)
+    return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
 def get_composable_separate_loader(cfg: Config, number: int = None)-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {
@@ -113,7 +123,7 @@ def get_composable_separate_loader(cfg: Config, number: int = None)-> Dict[str, 
     }
     return loaders
 
-def get_separate_loader(cfg: Config, dataset: str = "MNIST", number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
+def get_separate_loader(cfg: Box, dataset: str = "MNIST", number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {
         "fg": get_colored_loaders(cfg, dataset=dataset, variant="foreground", number=number, task=task),
         "bg": get_colored_loaders(cfg, dataset=dataset, variant="background", number=number, task=task),

@@ -7,6 +7,7 @@ from typing import Dict
 import numpy as np
 import torch
 import wandb
+from box import Box
 from matplotlib import pyplot as plt
 from torchvision.utils import save_image, make_grid
 
@@ -122,7 +123,7 @@ def visualize_epoch(generated: torch.Tensor, real: torch.Tensor,  dirs: Dict, ep
 
 
 @torch.no_grad()
-def visualize_vae(epoch, vae_model, val_loader, device, dirs, writer, wandb_run=None):
+def visualize_vae(cfg: Box, epoch, vae_model, val_loader, device, dirs, writer, wandb_run=None):
     """
     Generates and logs a comprehensive suite of VAE visualizations.
     """
@@ -132,7 +133,7 @@ def visualize_vae(epoch, vae_model, val_loader, device, dirs, writer, wandb_run=
     # Get a fixed batch from validation set for consistent visualization
     try:
         val_batch = next(iter(val_loader))
-        images = val_batch['image'].to(device)
+        images = val_batch['image'][: cfg.sampling.batch_size].to(device)
     except StopIteration:
         print("Validation loader is empty, skipping visualization.")
         return

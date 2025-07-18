@@ -7,8 +7,7 @@ from datetime import timedelta
 import time
 
 from src.models.ldm.autoencoder import AutoencoderKL, DiagonalGaussianDistribution
-from src.models.ldm.diffusion import latent_sample
-from src.models.vanilla.unet import Unet
+from src.models.vanilla.composable_unet import ComposableUnet
 from src.utils.calculations import q_sample
 from src.utils.checkpoint_manager import CheckpointManager
 from src.train.logging.training_logger_utils import (
@@ -16,16 +15,16 @@ from src.train.logging.training_logger_utils import (
     visualize_epoch, log_json, log_training_end
 )
 from src.monitoring.email_alert_mailtrap import alert_on_success
-from src.utils.sampling import ldm_sampler
+from src.utils.sampling import composable_ldm_sampler
 
 
-def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, val_loader, logger, device, writer=None, wandb_run=None):
+def train(cfg, dirs, model: ComposableUnet, ema, vae: AutoencoderKL, train_loader, val_loader, logger, device, writer=None, wandb_run=None):
     optimizer = torch.optim.Adam(model.parameters(), **cfg.optimizer.params)
     scaler = GradScaler()
     start_time = time.time()
     log_training_start(
         logger,
-        model_name="Latent Diffusion Model",
+        model_name="Composable Latent Diffusion Model",
         experiment_id=cfg.experiment_id,
         run_id=cfg.run_id,
         task=cfg.task,
@@ -57,16 +56,20 @@ def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, val_loa
 
             for step, train_batch in enumerate(train_loader, 1):
                 optimizer.zero_grad()
-                batch = train_batch['image'].to(device)
+                # ✨ Unpack all data from the batch
+                images = train_batch['image'].to(device)
+                digit_labels = train_batch['digit_label'].to(device)
+                digit_color_labels = train_batch['color_label'].to(device)
+                bbox_color_labels = train_batch['bbox_label'].to(device)
                 with torch.no_grad():
-                    posterior: DiagonalGaussianDistribution= vae.encode(batch)
+                    posterior: DiagonalGaussianDistribution= vae.encode(images)
                     latents = posterior.sample() * 0.18215
                 t = torch.randint(0, cfg.diffusion.timesteps, (latents.shape[0],), device=device).long()
                 noise = torch.randn_like(latents)
                 latents_noisy = q_sample(latents, t, noise, timesteps=cfg.diffusion.timesteps,
                                          beta_start=cfg.diffusion.beta_start, beta_end=cfg.diffusion.beta_end)
                 with autocast():
-                    predicted_noise = model(latents_noisy, t)
+                    predicted_noise = model(latents_noisy, t, digit_labels, digit_color_labels, bbox_color_labels)
                 predicted_noise = predicted_noise.float()
                 if cfg.diffusion.loss_type == 'l1':
                     loss = F.l1_loss(noise, predicted_noise)
@@ -101,13 +104,16 @@ def train(cfg, dirs, model: Unet, ema, vae: AutoencoderKL, train_loader, val_loa
             # --- Visualization: Generate Samples in Latent Space, Decode, Log ---
             if epoch % cfg.training.log_every_epoch == 0:
                 model.eval()
-                real_batch = next(iter(val_loader))
-                real_batch = real_batch['image'].to(device)
+                batch = next(iter(val_loader))
+                image = batch['image'][: cfg.sampling.batch_size].to(device)
+                digit_labels = batch['digit_label'][: cfg.sampling.batch_size].to(device)
+                digit_color_labels = batch['color_label'][: cfg.sampling.batch_size].to(device)
+                bbox_color_labels = batch['bbox_label'][: cfg.sampling.batch_size].to(device)
 
                 # Generate samples in latent space using UNet, then decode to image
                 with torch.no_grad():
-                    generated = ldm_sampler(model, vae, cfg, device)
-                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run=None, writer=None)
+                    generated = composable_ldm_sampler(model, vae, cfg, device, digit_labels, digit_color_labels, bbox_color_labels)
+                visualize_epoch(generated, image, dirs, epoch=epoch, wandb_run=wandb_run, writer=writer)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 checkpoint_manager.save(model, optimizer, None, epoch, global_step)

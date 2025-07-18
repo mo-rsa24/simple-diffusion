@@ -29,6 +29,7 @@ TASK=""
 COLOR=""
 NUMBER=""
 GEN_MODEL=""
+PROFILE="default"
 JOB_NAME=""
 PARTITION=""
 RESUME=""
@@ -43,6 +44,7 @@ while [[ "$#" -gt 0 ]]; do
         --color|-c) COLOR="$2"; shift ;;
         --number|-n) NUMBER="$2"; shift ;;
         --gen_model|-g) GEN_MODEL="$2"; shift ;;
+        --profile|-p) PROFILE="$2"; shift ;;
         --resume) RESUME="true" ;;
         --use_wandb) USE_WANDB="true" ;;
         --use_tensorboard) USE_TB="true" ;;
@@ -109,6 +111,7 @@ print_kv "Task" "${TASK:-<none>}"
 print_kv "Color" "${COLOR:-<none>}"
 print_kv "Number" "${NUMBER:-<none>}"
 print_kv "Generate Model" "${GEN_MODEL:-<none>}"
+print_kv "Profile" "${PROFILE:-<none>}"
 print_kv "Partition" "$PARTITION"
 print_kv "Job Name" "$JOB_NAME"
 print_kv "Base Dir" "$BASE_DIR"
@@ -121,7 +124,7 @@ SBATCH_CMD="sbatch --job-name=\"$JOB_NAME\" \
     --partition=\"$PARTITION\" \
     --output=\"$BASE_DIR/logs/slurm-%j.out\" \
     --error=\"$BASE_DIR/logs/slurm-%j.err\" \
-    --export=ALL,BASE_DIR=$BASE_DIR,EXP_ID=$EXP_ID,RUN_ID=$RUN_ID,DATASET=$DATASET,TASK=$TASK,COLOR=$COLOR,NUMBER=$NUMBER,GEN_MODEL=$GEN_MODEL,USE_WANDB=$USE_WANDB,USE_TB=$USE_TB,RESUME=$RESUME \
+    --export=ALL,BASE_DIR=$BASE_DIR,EXP_ID=$EXP_ID,RUN_ID=$RUN_ID,DATASET=$DATASET,TASK=$TASK,COLOR=$COLOR,NUMBER=$NUMBER,GEN_MODEL=$GEN_MODEL,PROFILE=$PROFILE,USE_WANDB=$USE_WANDB,USE_TB=$USE_TB,RESUME=$RESUME \
     src/scripts/run_job.slurm"
 
 # --- Execute or Simulate Submission ---
@@ -162,4 +165,4 @@ fi
 success "Experiment launch script finished."
 
 
-#./src/scripts/launch_experiment.sh --experiment "mnist" --run "1" --dataset "MNIST" --task "generate" --gen_model "vanilla" --partition bigbatch
+#./src/scripts/launch_experiment.sh --experiment "mnist" --run "1" --dataset "MNIST" --task "generate" --gen_model "vae" --profile sanity --partition bigbatch

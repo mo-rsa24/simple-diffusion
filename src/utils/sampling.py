@@ -2,6 +2,9 @@ import torch
 from tqdm import tqdm
 import torch.nn.functional as F
 
+from src.models.ldm.autoencoder import AutoencoderKL
+from src.models.vanilla.composable_unet import ComposableUnet
+
 
 def get_diffusion_constants(cfg, device):
     """Helper function to get all diffusion schedule constants."""
@@ -61,6 +64,62 @@ def ddpm_sampler(model, cfg, device, conds=None):
 
     return img
 
+
+@torch.no_grad()
+def composable_ddpm_sampler(
+        model: ComposableUnet,
+        cfg,
+        device,
+        digit_labels,
+        digit_color_labels,
+        bbox_color_labels,
+        guidance_scale=7.5
+):
+    """
+    Conditional DDPM sampler for ComposableUnet using Classifier-Free Guidance.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    posterior_variance = constants["posterior_variance"]
+    timesteps = cfg.diffusion.timesteps
+    batch_size = digit_labels.shape[0]
+
+    # Start with random noise
+    img = torch.randn((batch_size, cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size), device=device)
+
+    for i in tqdm(reversed(range(0, timesteps)), desc='Composable DDPM Sampling', total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # 1. Predict noise with conditioning (conditional pass)
+        predicted_noise_cond = model(img, t, digit_labels, digit_color_labels, bbox_color_labels)
+
+        # 2. Predict noise without conditioning (unconditional pass)
+        # Create null labels (assuming class index 10 is the null token)
+        uncond_digit_labels = torch.full_like(digit_labels, 10)
+        uncond_digit_color_labels = torch.full_like(digit_color_labels, 10)
+        uncond_bbox_color_labels = torch.full_like(bbox_color_labels, 10)
+
+        predicted_noise_uncond = model(img, t, uncond_digit_labels, uncond_digit_color_labels, uncond_bbox_color_labels)
+
+        # 3. Combine predictions using Classifier-Free Guidance
+        noise_pred = predicted_noise_uncond + guidance_scale * (predicted_noise_cond - predicted_noise_uncond)
+
+        # 4. Denoise for one step (p_sample logic)
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * noise_pred)
+
+        if i == 0:
+            img = model_mean
+        else:
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance[i]) * noise
+
+    return img
 
 @torch.no_grad()
 def vpsde_sampler(model, cfg, device, conds=None, corrector_steps=1, snr=0.15):
@@ -160,7 +219,6 @@ def composable_sampler(model, cfg, device, conds_list, weights):
     `weights`: A list of weights for combining the noise predictions.
     """
     constants = get_diffusion_constants(cfg, device)
-    betas = constants["betas"]
     alphas = constants["alphas"]
     alphas_cumprod = constants["alphas_cumprod"]
 
@@ -299,6 +357,70 @@ def ldm_sampler(ldm_unet, vae, cfg, device, conds=None):
     images = vae.decode(latents)
     return images
 
+
+@torch.no_grad()
+def composable_ldm_sampler(
+        model: ComposableUnet,
+        vae: AutoencoderKL,
+        cfg,
+        device,
+        digit_labels,
+        digit_color_labels,
+        bbox_color_labels,
+        guidance_scale=7.5
+):
+    """
+    Conditional LDM sampler for ComposableUnet in latent space, using CFG.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    posterior_variance = constants["posterior_variance"]
+    timesteps = cfg.diffusion.timesteps
+    batch_size = digit_labels.shape[0]
+
+    # Determine latent shape from a dummy forward pass through VAE
+    dummy_input = torch.zeros(1, cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size, device=device)
+    dummy_posterior = vae.encode(dummy_input)
+    latent_shape = (batch_size,) + tuple(dummy_posterior.mean.shape[1:])
+
+    # Start with random noise in the latent space
+    z = torch.randn(latent_shape, device=device)
+
+    for i in tqdm(reversed(range(0, timesteps)), desc='Composable LDM Sampling', total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # 1. Predict noise with conditioning
+        predicted_noise_cond = model(z, t, digit_labels, digit_color_labels, bbox_color_labels)
+
+        # 2. Predict noise without conditioning
+        uncond_digit_labels = torch.full_like(digit_labels, 10)
+        uncond_digit_color_labels = torch.full_like(digit_color_labels, 10)
+        uncond_bbox_color_labels = torch.full_like(bbox_color_labels, 10)
+        predicted_noise_uncond = model(z, t, uncond_digit_labels, uncond_digit_color_labels, uncond_bbox_color_labels)
+
+        # 3. Combine using CFG
+        noise_pred = predicted_noise_uncond + guidance_scale * (predicted_noise_cond - predicted_noise_uncond)
+
+        # 4. Denoise latent for one step
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+        coeff_z = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_z * (z - coeff_pred_noise * noise_pred)
+
+        if i == 0:
+            z = model_mean
+        else:
+            noise = torch.randn_like(z)
+            z = model_mean + torch.sqrt(posterior_variance[i]) * noise
+
+    # Decode the final latent vector to get the image
+    z = z / 0.18215  # Rescale latent before decoding
+    image = vae.decode(z)
+
+    return image
 
 @torch.no_grad()
 def classifier_guided_sampler(model, classifier, cfg, device, conds=None, guidance_scale=7.5):

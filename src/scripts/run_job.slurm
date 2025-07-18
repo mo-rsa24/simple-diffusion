@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${BASE_DIR}/logs/slurm-%j.out
 #SBATCH --error=${BASE_DIR}/logs/slurm-%j.err
-
+#SBATCH --exclude=mscluster45
 
 # === Pretty Print Helpers ===
 # Define colors and helper functions for logging.
@@ -47,6 +47,7 @@ NUMBER="${NUMBER:-$6}"
 GEN_MODEL="${GEN_MODEL:-$7}"
 USE_WANDB="${USE_WANDB:-$8}"
 USE_TB="${USE_TB:-$9}"
+PROFILE="${PROFILE:-default}" # ✨ Capture the profile variable, defaulting to "default"
 RESUME="${RESUME:-}"
 BASE_DIR="${BASE_DIR:?}" # Fails if BASE_DIR is not set
 
@@ -110,6 +111,10 @@ if [[ -n "$NUMBER" && "$NUMBER" != "None" ]]; then
 fi
 if [[ -n "$GEN_MODEL" && "$GEN_MODEL" != "None" ]]; then
     PY_ARGS+=(--gen_model "$GEN_MODEL")
+fi
+# ✨ Add the profile argument to the python command
+if [[ -n "$PROFILE" && "$PROFILE" != "None" ]]; then
+    PY_ARGS+=(--profile "$PROFILE")
 fi
 if [[ "$USE_WANDB" == "true" ]]; then
     PY_ARGS+=(--use_wandb)

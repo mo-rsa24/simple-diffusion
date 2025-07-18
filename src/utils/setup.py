@@ -103,15 +103,34 @@ def load_config_(path: str, experiment_id: str, run_id:str, task: str = "generat
         sampling      = SamplingConfig(**data["sampling"]),
         sanity_checks = SanityCheckConfig(**data["sanity_checks"])
     )
+def save_config(cfg: Box, save_dir: Path, filename: str = "config.yml"):
+    """
+    Saves the final configuration Box object to a YAML file.
 
-def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "vanilla") -> dict:
+    Args:
+        cfg (Box): The final, merged configuration object.
+        save_dir (Path): The directory where the config should be saved.
+    """
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_path = save_dir / filename
+
+    # Convert the Box object to a standard dictionary for clean YAML output
+    config_dict = cfg.to_dict()
+
+    print(f"Saving final configuration to: {save_path}")
+    with open(save_path, 'w') as f:
+        # Use sort_keys=False to maintain the original order
+        yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False, indent=2)
+
+def build_dirs(cfg: Box, base_dir: Optional[str] = None, gen_modeL: str = "vanilla") -> dict:
     if base_dir is not None:
         base = Path(base_dir)
         ckpt_dir = base / "checkpoints"
         logs_dir = base / "logs"
         tb_dir = logs_dir / "tb"
         wandb_dir = logs_dir / "wandb"
-        for d in [ckpt_dir, logs_dir, tb_dir, wandb_dir]:
+        hyperparameters_dir = logs_dir / "hyperparameters"
+        for d in [ckpt_dir, logs_dir, tb_dir, wandb_dir, hyperparameters_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
         paths = {
@@ -119,6 +138,7 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "va
             "logs": logs_dir,
             "tb": tb_dir,
             "wandb": wandb_dir,
+            "hyperparameters": hyperparameters_dir,
         }
 
         results_base = base / "results"
@@ -147,6 +167,7 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "va
         ("logs", cfg.dirs.logs_dir),
         ("tb", cfg.dirs.tensorboard_dir),
         ("wandb", cfg.dirs.wandb_dir),
+        ("hyperparameters", cfg.dirs.hyperparameters_dir),
     ]:
         abs_path = root_base / "simple-diffusion" / experiment / run  / task / gen_modeL
         abs_path.mkdir(parents=True, exist_ok=True)
@@ -164,7 +185,6 @@ def build_dirs(cfg: Config, base_dir: Optional[str] = None, gen_modeL: str = "va
         full_path = results_base / Path(rel_path).name
         full_path.mkdir(parents=True, exist_ok=True)
         paths[f"results_{name}"] = full_path
-
     return paths
 
 

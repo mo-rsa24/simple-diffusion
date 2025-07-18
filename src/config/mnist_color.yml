@@ -1,117 +1,55 @@
-# config/tb.yaml
+# ===================================================================
+# BASE CONFIGURATION
+# Defines the default parameters for all experiments using this file.
+# ===================================================================
 seed: 42
 
-dataset:
+# --- Default Dataset Settings ---
+dataset: &default_dataset
+  name: MNIST
   data_dir: "./data"
+  image_size: 32 # Padded to be a power of two
+  channels: 3
   batch_size: 128
   num_workers: 4
-  image_size: 28
   pin_memory: true
-  channels: 3
-  augmentation: low
-  normalization: minmax
-  resize_strategy: center_crop
-  hist_eq: false
 
-model:
-  type: unet
-  vpsde:
-    dim: 64
-    channels: 3
-    dim_mults: [1,2,4]
-    use_attention_at: [1]
-    sde:
-      type: vp
-      beta_min: 0.1
-      beta_max: 20.0
-  ldm:
-    dim: 64
-    init_dim: 64
-    out_dim: null
-    dim_mults: [1,2,4]
-    channels: 3
-    latent_dim: 64
-    self_condition: false
-    resnet_block_groups: 4
-    use_attention_at: [1]
-  edm:
-    dim: 64
-    dim_mults: [1,2,4]
-    channels: 3
-  slot:
-    dim: 64
-    channels: 3
-  composable:
-    base_dim: 64
-    channels: 3
-  comp_unet:
-    dim: 64
-    factors: 3
-    beta_schedule: linear
-  cascaded:
-    dim: 64
-    stages: 3
-    beta_schedule: linear
-  guided:
-    dim: 64
-    slots: 3
-  moe:
-    dim: 64
-    experts: 3
-    beta_schedule: linear
-  classifier_guided:
-    dim: 64
-    num_classes: 10
-  vanilla:
-    dim: 64
-    init_dim: 64
-    out_dim: null
-    dim_mults: [1, 2, 4]
-    channels: 3
-    self_condition: false
-    resnet_block_groups: 4
-    use_attention_at: [1]
+# --- Default Training Settings ---
+training: &default_training
+  epochs: 200
+  log_every_step: 10000
+  log_every_epoch: 50
+  save_every_epoch: 100
+  save_every_step: 10000
+  resume_from: false
 
-optimizer:
-  type: "Adam"
+# --- Default Optimizer ---
+optimizer: &default_optimizer
+  type: Adam
   params:
     lr: !!float "2e-4"
-    betas:      [0.9, 0.999]
-    weight_decay: 0.0
+    betas: [0.9, 0.999]
 
-diffusion:
+# --- Default Training Settings ---
+diffusion: &default_diffusion
   timesteps: 1000
   loss_type: "l2"
   beta_start: 0.0001
   ema_decay: 0.9999
   beta_end: 0.02
 
-training:
-  epochs: 100
-  log_every_step: 3000
-  log_every_epoch: 25
-  save_every_step: 3000
-  save_every_epoch: 25
-  resume_from: false
-dirs:
-  cluster_base: "/gluster/mmolefe/PhD"
-  local_base: .
-  ckpt_dir: "./checkpoints"
-  logs_dir: "./logs"
-  results_dir:
-    base: "./results"
-    samples: "./samples"
-    side_by_side: "./side_by_side"
-    feature_maps: "./feature_maps"
-    tsne: "./tsne"
-  tensorboard_dir: "./tensorboard"
-  wandb_dir: "./wandb"
-
-logging:
-  use_tensorboard: false
+# --- Default Logging ---
+logging: &default_logging
   use_wandb: false
+  use_tensorboard: false
 
-sampling:
+# --- Default Sanity---
+sanity: &default_sanity
+  enabled: False
+  num_examples: 10
+
+# --- Default Sampling---
+sampling: &default_sampling
   batch_size: 4
   channels: 3
   blit: true
@@ -119,8 +57,149 @@ sampling:
   edm_sampler:
     params: { }
 
-observability:
-  feature_maps: false
-  batch_grid: true
-  sample_table: true
-  diffusion_process: true
+# --- Default Dirs---
+dirs: &default_dirs
+  cluster_base: "/gluster/mmolefe/PhD"
+  local_base: .
+  ckpt_dir: "./checkpoints"
+  logs_dir: "./logs"
+  hyperparameters_dir: "./hyperparameters"
+  results_dir:
+    base: "./results"
+    samples: "./samples"
+  tensorboard_dir: "./tensorboard"
+  wandb_dir: "./wandb"
+
+# ===================================================================
+# MODEL-SPECIFIC OVERRIDES
+# Each block contains parameters that will override the defaults
+# when that model is selected via the -g <model_name> flag.
+# ===================================================================
+model:
+  vanilla:
+    # Vanilla Unet uses the default dataset and training settings.
+    # We only override the learning rate.
+    training:
+      epochs: 200 # VAEs need sufficient training
+      log_every_epoch: 50
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
+    optimizer:
+      params:
+        lr: 0.0002
+    architecture:
+      dim: 96
+      init_dim: 96
+      out_dim: null
+      dim_mults: [ 1, 2, 4, 8 ]
+      channels: 3
+      self_condition: false
+      resnet_block_groups: 4
+      use_attention_at: [ 2 ]
+  composable_vanilla:
+    training:
+      epochs: 200 # VAEs need sufficient training
+      log_every_epoch: 50
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
+    optimizer:
+      params:
+        lr: 0.0002
+    architecture:
+      dim: 128                  # More capacity for the conditional task
+      init_dim: 128
+      out_dim: null
+      dim_mults: [ 1, 2, 4, 8 ]
+      channels: 3               # Composable dataset is 3-channel
+      self_condition: false
+      resnet_block_groups: 4
+      use_attention_at: [ 2 ]
+      # --- Conditional Parameters ---
+      num_classes_digit: 11       # 10 digits + 1 for null/unconditional
+      num_classes_digit_color: 11 # 10 colors + 1 for null
+      num_classes_bbox_color: 11  # 10 colors + 1 for null
+      embedding_dim: 256          # Dimension for class embeddings
+  vae:
+    # VAE training requires its own specific parameters.
+    # It inherits the default dataset settings.
+    training:
+      epochs: 100 # VAEs need sufficient training
+      log_every_epoch: 25
+    dirs:
+      results_dir:
+        latent_prior: "./latent_prior"
+        latent_space: "./latent_space"
+        reconstruction_error_distribution: "./latent_space"
+        prior_samples: "./prior_samples"
+    optimizer:
+      params:
+        lr: 0.001
+    # VAE-specific model architecture params
+    architecture:
+      ddconfig:
+        double_z: True
+        z_channels: 4
+        resolution: 32
+        in_channels: 3
+        out_ch: 3
+        ch: 160
+        ch_mult: [1, 2, 4, 4]
+        num_res_blocks: 2
+        attn_resolutions: []
+        dropout: 0.0
+      lossconfig:
+        params:
+          kl_weight: 0.000005
+      embed_dim: 4
+
+  ldm:
+    # The LDM's Unet has its own architecture. # It will use the pre-trained VAE, so it doesn't need VAE params.
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
+    optimizer:
+      params:
+        lr: 0.0001
+    training:
+      epochs: 250 # VAEs need sufficient training
+      log_every_epoch: 50
+    architecture:
+      dim: 128
+      dim_mults: [1, 2, 4]
+      resnet_block_groups: 4
+      use_attention_at: [1, 2]
+      # 'channels' is set dynamically in run.py from the VAE
+
+# ===================================================================
+# EXPERIMENT PROFILES
+# Defines sets of overrides that can be activated with --profile <name>
+# This is perfect for sanity checks, debugging, or full production runs.
+# ===================================================================
+profiles:
+  default:
+    # The default profile has no overrides. It uses the settings defined above.
+    description: "Standard training run with default parameters."
+
+  sanity:
+    # The 'sanity' profile is for quick overfitting tests.
+    description: "A quick sanity check on a small batch to test for bugs."
+    enabled: True
+    num_examples: 8
+    dataset:
+      batch_size: 4 # Use a very small batch size
+    diffusion:
+      timesteps: 1000
+    training:
+      epochs: 20 # Only run for a few epochs
+      log_every_step: 8 # Log every single step. Should be same as num_examples
+      log_every_epoch: 5
+      save_every_epoch: 200
+      save_every_step: 8
+  debug:
+    # The 'debug' profile disables logging for faster local iteration.
+    description: "A debug run with logging disabled."
+    logging:
+      use_wandb: false
+      use_tensorboard: false

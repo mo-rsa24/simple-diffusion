@@ -9,7 +9,8 @@ from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GE
 from src.task import classify_task
 from src.train.logging.training_logger_utils import log_exception
 from src.utils.checkpoint_manager import CheckpointManager
-from src.utils.setup import load_config, build_dirs, init_observers
+from src.utils.setup import load_config, build_dirs, init_observers, save_config
+
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -30,7 +31,9 @@ def parse_args():
         type=str,
         choices=[
             "vanilla",
+            "composable_vanilla",
             "ldm",
+            "composable_ldm",
             "vae",
             "slot",
             "edm",
@@ -101,6 +104,7 @@ if __name__ == "__main__":
         print(cfg)
         exit(0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    save_config(cfg, dirs.get('hyperparameters'), os.path.basename(config_path))
     try:
         extra = {}
         if args.dataset == "MNIST_COMPOSABLE":
@@ -132,11 +136,17 @@ if __name__ == "__main__":
             )
         elif args.task == "generate":
             if args.gen_model == "vanilla":
-                model_params = dict(cfg.model.vanilla)  # copy so we don't modify original config
+                model_params = dict(cfg.model.vanilla.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.simple_diffusion.train import train as pixel_train
                 pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
+            elif args.gen_model == "composable_vanilla":
+                model_params = dict(cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
+                model = GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.simple_diffusion.composable_train import train as composable_train
+                composable_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "vae":
                 model_params = dict(cfg.model.vae.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vae"]["vae"](**model_params).to(device)
@@ -168,6 +178,32 @@ if __name__ == "__main__":
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.ldm.ldm_train import train as ldm_train
                 ldm_train(cfg, dirs, model, ema, vae, train_loader, val_loader, logger, device, writer, wandb_run)
+            elif args.gen_model == "composable_ldm":
+                model_params = dict(cfg.model.composable_ldm.architecture)  # copy so we don't modify original config
+
+                vae_params = dict(cfg.model.vae.architecture)
+                vae: AutoencoderKL = GENERATION_MODEL_REGISTRY["vae"]["vae"](**vae_params).to(device)
+                vae_path = Path(Path(dirs.get('ckpt', cfg.dirs.ckpt_dir)).__str__().replace('composable_ldm', 'vae'))
+                try:
+                    vae_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=vae_path,
+                                                               logger=logger)
+                    vae_optimizer = torch.optim.Adam(vae.parameters(), **cfg.optimizer.params)
+                    vae, vae_optimizer, scheduler, last_epoch, global_step = vae_checkpoint_manager.load_latest(
+                        vae, vae_optimizer, map_location=device)
+                except Exception as e:
+                    logger.warning(f"Could not resume training: {e}")
+
+                encoder = vae.encoder
+                decoder = vae.decoder
+                encoder.eval()
+                decoder.eval()
+
+                latent_channels = vae.encoder.z_channels # print model_params['channels'] here:
+                model_params['channels'] = latent_channels
+                model = GENERATION_MODEL_REGISTRY["composable_ldm"]["unet"](**model_params).to(device)
+                ema = EMA(model, decay=cfg.diffusion.ema_decay)
+                from src.train.generate.ldm.composable_ldm_train import train as composable_ldm_train
+                composable_ldm_train(cfg, dirs, model, ema, vae, train_loader, val_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "slot":
                 model_params = dict(cfg.model.slot)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["slot"]["unet"](**model_params).to(device)

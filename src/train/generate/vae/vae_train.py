@@ -27,7 +27,7 @@ def train(cfg: Box, dirs: Dict, model: AutoencoderKL, train_loader: DataLoader, 
     start_time = time.time()
     log_training_start(
         logger,
-        model_name=cfg.model.type,
+        model_name="Variational Autoencoder",
         experiment_id=cfg.experiment_id,
         run_id=cfg.run_id,
         task=cfg.task,
@@ -96,7 +96,7 @@ def train(cfg: Box, dirs: Dict, model: AutoencoderKL, train_loader: DataLoader, 
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss,  duration=epoch_time)
 
             if epoch % cfg.training.log_every_epoch == 0:
-                visualize_vae(epoch, model, val_loader, device, dirs, writer, wandb_run)
+                visualize_vae(cfg, epoch, model, val_loader, device, dirs, writer, wandb_run)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)
