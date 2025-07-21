@@ -83,15 +83,22 @@ class ComposableColoredMNISTWithBBox(Dataset):
         digit_mask_np = np.array(digit_mask_pil)
         bbox_mask_np[digit_mask_np] = 0  # Subtract digit area from bbox mask
 
-        # Convert final image to tensor
+        # --- Apply Transforms Consistently ---
+        # The transform pipeline (including padding) must be applied to the image AND the masks.
         if self.transform:
             final_tensor = self.transform(img_with_bbox)
+            digit_mask_tensor = self.transform(digit_mask_pil)
+            bbox_mask_tensor = self.transform(bbox_mask_pil)
         else:
-            final_tensor = transforms.ToTensor()(img_with_bbox)
+            # Default to ToTensor if no transform is provided
+            to_tensor_transform = transforms.ToTensor()
+            final_tensor = to_tensor_transform(img_with_bbox)
+            digit_mask_tensor = to_tensor_transform(digit_mask_pil)
+            bbox_mask_tensor = to_tensor_transform(bbox_mask_pil)
 
-        # Convert masks to tensors
-        digit_mask_tensor = transforms.ToTensor()(Image.fromarray(digit_mask_np))
-        bbox_mask_tensor = transforms.ToTensor()(Image.fromarray(bbox_mask_np))
+        # Binarize masks after transform to ensure they are 0 or 1
+        digit_mask_tensor = (digit_mask_tensor > 0.5).float()
+        bbox_mask_tensor = (bbox_mask_tensor > 0.5).float()
 
         return {
             "image": final_tensor,

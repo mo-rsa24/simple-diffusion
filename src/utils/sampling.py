@@ -2,6 +2,7 @@ import torch
 from tqdm import tqdm
 import torch.nn.functional as F
 
+from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.ldm.autoencoder import AutoencoderKL
 from src.models.vanilla.composable_unet import ComposableUnet
 
@@ -83,6 +84,55 @@ def ito_sampler(models, shape, timesteps, beta_min, beta_max, weights=None, devi
 
     return x.clamp(-1, 1)
 
+
+@torch.no_grad()
+def composable_expert_sampler(model: ComposableDiffusionModel, cfg, device):
+    """
+    Sampler specifically for the ComposableDiffusionModel which returns a
+    dictionary of expert predictions.
+
+    This sampler uses the "merged" output from the model, which is assumed
+    to be the intelligent combination of all expert noise predictions.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    posterior_variance = constants["posterior_variance"]
+
+    batch_size = cfg.sampling.batch_size
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+    timesteps = cfg.diffusion.timesteps
+
+    # Start with random noise
+    img = torch.randn((batch_size, channels, img_size, img_size), device=device)
+
+    # Set the model to evaluation mode
+    model.eval()
+
+    for i in tqdm(reversed(range(timesteps)), desc="Composable Expert Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # Get the dictionary of predictions and extract the merged noise
+        model_output = model(img, t)
+        predicted_noise = model_output["merged"]
+
+        # Standard DDPM denoising step (from ddpm_sampler)
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance[i]) * noise
+
+    return img.clamp(-1, 1)
 
 @torch.no_grad()
 def composable_unet_sampler(model, shape, timesteps, beta_min, beta_max, device="cpu"):

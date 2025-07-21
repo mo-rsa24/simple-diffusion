@@ -7,6 +7,7 @@ from src.models.vanilla.ema import EMA
 from src.monitoring.alert_notifier import send_failure_email
 from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GENERATION_MODEL_REGISTRY
 from src.task import classify_task
+from src.train.generate.vae.train_beta_vae import train_beta_vae
 from src.train.logging.training_logger_utils import log_exception
 from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.setup import load_config, build_dirs, init_observers, save_config
@@ -36,6 +37,7 @@ def parse_args():
             "ldm",
             "composable_ldm",
             "vae",
+            "beta_vae",
             "slot",
             "edm",
             "vpsde",
@@ -164,7 +166,10 @@ if __name__ == "__main__":
                 model_params = dict(cfg.model.vae.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vae"]["vae"](**model_params).to(device)
                 from src.train.generate.vae.vae_train import train as vae_train
-                vae_train(cfg, dirs, model, train_loader, val_loader,  logger, device, writer, wandb_run)
+            elif args.gen_model == "beta_vae":
+                model_params = dict(cfg.model.beta_vae.architecture)  # copy so we don't modify original config
+                model = GENERATION_MODEL_REGISTRY["beta_vae"]["vae"](**model_params).to(device)
+                train_beta_vae(cfg, dirs, model, train_loader, val_loader, logger, device, writer=writer, wandb_run=wandb_run)
             elif args.gen_model == "ldm":
                 model_params = dict(cfg.model.ldm.architecture)  # copy so we don't modify original config
 
@@ -238,12 +243,12 @@ if __name__ == "__main__":
                 edm_train(cfg, dirs, model, ema, train_loader,
                           logger, device, writer, wandb_run)
             elif args.gen_model == "composable":
-                model_params = dict(cfg.model.composable)
+                model_params = dict(cfg.model.composable.architecture)
                 model = GENERATION_MODEL_REGISTRY["composable"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.composable.composable_train import train as composable_train
 
-                composable_train(cfg, dirs, model, ema, train_loader,
+                composable_train(cfg, dirs, model, train_loader,val_loader,
                                  logger, device, writer, wandb_run)
             elif args.gen_model == "comp_unet":
                 model_params = dict(cfg.model.comp_unet)
