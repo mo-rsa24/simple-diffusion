@@ -48,6 +48,9 @@ GEN_MODEL="${GEN_MODEL:-$7}"
 USE_WANDB="${USE_WANDB:-$8}"
 USE_TB="${USE_TB:-$9}"
 PROFILE="${PROFILE:-default}" # ✨ Capture the profile variable, defaulting to "default"
+LOSS_MASK="${LOSS_MASK:-}"
+DIGIT_COLOR_LABEL="${DIGIT_COLOR_LABEL:-}"
+BBOX_COLOR_LABEL="${BBOX_COLOR_LABEL:-}"
 RESUME="${RESUME:-}"
 BASE_DIR="${BASE_DIR:?}" # Fails if BASE_DIR is not set
 
@@ -115,6 +118,15 @@ fi
 # ✨ Add the profile argument to the python command
 if [[ -n "$PROFILE" && "$PROFILE" != "None" ]]; then
     PY_ARGS+=(--profile "$PROFILE")
+fi
+if [[ -n "$LOSS_MASK" && "$LOSS_MASK" != "None" ]]; then
+    PY_ARGS+=(--loss_mask "$LOSS_MASK")
+fi
+if [[ -n "$DIGIT_COLOR_LABEL" && "$DIGIT_COLOR_LABEL" != "None" ]]; then
+    PY_ARGS+=(--digit_color_label "$DIGIT_COLOR_LABEL")
+fi
+if [[ -n "$BBOX_COLOR_LABEL" && "$BBOX_COLOR_LABEL" != "None" ]]; then
+    PY_ARGS+=(--bbox_color_label "$BBOX_COLOR_LABEL")
 fi
 if [[ "$USE_WANDB" == "true" ]]; then
     PY_ARGS+=(--use_wandb)
