@@ -3,6 +3,8 @@ from typing import Dict
 
 import torch
 import torch.nn.functional as F
+from box import Box
+
 from src.config.configs import Config
 from src.models.edm.EDM import EDMNoiseSchedule, edm_loss, edm_sampler
 from src.models.vpsde.ScoreSdeUNet import VPSDE, dsm_loss, pc_sampler
@@ -20,7 +22,7 @@ from torch.optim import Adam
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 
-def train(cfg: Config,
+def train(cfg: Box,
           dirs: Dict,
           model,
           ema: EMA,

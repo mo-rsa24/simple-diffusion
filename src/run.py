@@ -31,6 +31,7 @@ def parse_args():
         type=str,
         choices=[
             "vanilla",
+            "vanilla_expert",
             "composable_vanilla",
             "ldm",
             "composable_ldm",
@@ -48,6 +49,12 @@ def parse_args():
         default="vanilla",
         help="Which diffusion model architecture to use.",
     )
+    p.add_argument('--loss_mask', type=str, default=None, choices=['digit', 'bbox'],
+                   help='Apply loss only to a specific part of the image to train an "expert" model.')
+    p.add_argument('--digit_color_label', type=int, default=None,
+                   help='Apply a specific color to all the digits. Usually used when wanting to train experts')
+    p.add_argument('--bbox_color_label', type=int, default=None,
+                   help='Apply a specific color to all the bounding box. Usually used when wanting to train experts')
     p.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     p.add_argument("--use_tensorboard", action="store_true", help="Enable TensorBoard logging")
     p.add_argument("--resume", action="store_true", help="Resume training from latest checkpoint")
@@ -113,6 +120,8 @@ if __name__ == "__main__":
             cfg,
             number=args.number,
             task=args.task,
+            digit_color_label=args.digit_color_label,
+            bbox_color_label=args.bbox_color_label,
             **extra
         )
 
@@ -139,8 +148,12 @@ if __name__ == "__main__":
                 model_params = dict(cfg.model.vanilla.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device)
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
-                from src.train.generate.simple_diffusion.train import train as pixel_train
-                pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
+                if args.loss_mask:
+                    from src.train.generate.simple_diffusion.train_disentangled import train as train_disentangled
+                    train_disentangled(cfg, dirs, model, ema, train_loader, logger, device, args.loss_mask, writer, wandb_run)
+                else:
+                    from src.train.generate.simple_diffusion.train import train as pixel_train
+                    pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
             elif args.gen_model == "composable_vanilla":
                 model_params = dict(cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device)

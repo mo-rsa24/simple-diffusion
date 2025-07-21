@@ -94,7 +94,7 @@ def tiny_subset(dataset: Dataset, num_items: int = 8) -> Subset:
     indices = list(range(min(len(dataset), num_items)))
     return Subset(dataset, indices)
 
-def get_composable_loaders(cfg: Box, variant: str="foreground", number: int = None,) -> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_composable_loaders(cfg: Box, variant: str="foreground", number: int = None, digit_color_label:int=None, bbox_color_label:int=None) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Dataloaders for ComposableColoredMNISTWithBBox."""
     from src.dataset.ComposableColoredMNISTWithBBox import ComposableColoredMNISTWithBBox
     transform_list = []
@@ -105,8 +105,8 @@ def get_composable_loaders(cfg: Box, variant: str="foreground", number: int = No
     transform_list.append(transforms.Normalize((0.5,), (0.5,)))
 
     transform = transforms.Compose(transform_list)
-    train_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=True, variant=variant, transform=transform, number=number)
-    test_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=False, variant=variant, transform=transform, number=number)
+    train_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=True, variant=variant, transform=transform, number=number, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label)
+    test_ds = ComposableColoredMNISTWithBBox(root=cfg.dataset.data_dir, train=False, variant=variant, transform=transform, number=number, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label)
     train_len = int(0.9 * len(train_ds))
     val_len = len(train_ds) - train_len
     train_ds, val_ds = torch.utils.data.random_split(train_ds, [train_len, val_len])
@@ -116,9 +116,9 @@ def get_composable_loaders(cfg: Box, variant: str="foreground", number: int = No
     loader = lambda ds, shuffle: DataLoader(ds, cfg.dataset.batch_size, shuffle=shuffle, num_workers=cfg.dataset.num_workers, pin_memory=False)
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
-def get_composable_separate_loader(cfg: Config, number: int = None)-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
+def get_composable_separate_loader(cfg: Box, number: int = None, digit_color_label:int=None, bbox_color_label:int=None)-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {
-        "fg": get_composable_loaders(cfg, variant="foreground", number=number),
+        "fg": get_composable_loaders(cfg, variant="foreground", number=number, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label),
         "bg": get_composable_loaders(cfg, variant="background", number=number),
     }
     return loaders

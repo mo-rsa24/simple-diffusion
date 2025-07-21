@@ -188,7 +188,7 @@ def build_dirs(cfg: Box, base_dir: Optional[str] = None, gen_modeL: str = "vanil
     return paths
 
 
-def init_observers(cfg: Config, dirs: dict, task: str = "TB"):
+def init_observers(cfg: Box, dirs: dict, task: str = "TB"):
     logger = init_logger(str(dirs["logs"]), log_to_stdout=True, log_level=cfg.logging.log_level)
     writer = None
     if cfg.logging.use_tensorboard:

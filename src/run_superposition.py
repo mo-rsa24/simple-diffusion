@@ -55,6 +55,14 @@ def parse_args():
     p.add_argument("--log-dir", type=str, default=None, help="Directory for training logs")
     p.add_argument("--array_index", type=int, default=None, help="SLURM array task index")
     p.add_argument("--log-level", type=str, default=None, help="Logging level")
+    # Inherited arguments from run.py
+    p.add_argument('-s', '--seed', type=int, default=42, help='Random seed')
+    p.add_argument('--weights', nargs='+', type=float, default=None,
+                        help='Weights for Itô sampler. Must sum to 1.')
+    p.add_argument('--compose_model', type=str, default='ito', choices=['ito', 'composable_unet'],
+                        help='Composition model to use')
+    p.add_argument('--compose_method', type=str, default='additive', choices=['additive', 'gating'],
+                        help='Composition method for ComposableUNet')
     p.add_argument('--profile', type=str, default='default',
                         help="The experiment profile to use (e.g., 'sanity', 'debug').")
 
@@ -121,26 +129,46 @@ if __name__ == "__main__":
         else:
             train_loader, val_loader, test_loader = loaders
         logger.info("Loading models for superposition...")
-        if args.gen_model == "vanilla":
-            model_params = dict(cfg.model.vanilla.architecture)  # copy so we don't modify original config
-            model = GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device)
-        elif args.gen_model == "composable_vanilla":
-            model_params = dict(cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
-            model = GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device)
+        models = []
+        for i in range(2):
+            if args.gen_model == "vanilla":
+                model_params = dict(cfg.model.vanilla.architecture)  # copy so we don't modify original config
+                models.append(GENERATION_MODEL_REGISTRY["vanilla"]["unet"](**model_params).to(device))
+            elif args.gen_model == "composable_vanilla":
+                model_params = dict(
+                    cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
+                models.append(GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device))
 
-        optimizer = None
+        digit_5_model_optimizer, digit_2_model_optimizer = None, None
         if cfg.optimizer.type.lower() == "adam":
-            optimizer = Adam(model.parameters(), **cfg.optimizer.params)
+            digit_5_model_optimizer = Adam(models[0].parameters(), **cfg.optimizer.params)
+            digit_2_model_optimizer = Adam(models[1].parameters(), **cfg.optimizer.params)
 
-        digit_5_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)),  logger=logger)
-        digit_5_model, optimizer, scheduler, last_epoch, global_step = digit_5_checkpoint_manager.load_latest(model, optimizer, scheduler, map_location=device)
+        try:
+            digit_5_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)),  logger=logger)
+            digit_5_model, digit_5_model_optimizer, scheduler, last_epoch, global_step = digit_5_checkpoint_manager.load_latest(models[0], digit_5_model_optimizer, scheduler, map_location=device)
+        except Exception as e:
+            logger.warning(f"Could not resume training: {e}")
 
-        digit_2_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt", Path(cfg.dirs.ckpt_dir)), logger=logger)
-        digit_2_model, optimizer, scheduler, last_epoch, global_step = digit_2_checkpoint_manager.load_latest(model, optimizer, scheduler, map_location=device)
+        try:
+            digit_2_path = Path(dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)).__str__().replace('color_mnist_digit_5', 'color_mnist_digit_2'))
+            digit_2_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=digit_2_path, logger=logger)
+            digit_2_model, digit_2_model_optimizer, scheduler, last_epoch, global_step = digit_2_checkpoint_manager.load_latest(models[1], digit_2_model_optimizer, scheduler, map_location=device)
+        except Exception as e:
+            logger.warning(f"Could not resume training: {e}")
 
+        """
+        # Check To See Checkpoints were saved and loaded appropriately 
+        
+        from src.utils.sampling import ddpm_sampler
+        from src.utils.visualization import visualize_images
+        digit_5 = ddpm_sampler(models[0], cfg, device)
+        digit_2 = ddpm_sampler(models[1], cfg, device)
+        visualize_images(digit_5)
+        visualize_images(digit_2)
+        """
         # Load multiple checkpoints
         logger.info(f"Successfully loaded models.")
-        models = [ digit_5_model, digit_2_model ]
         # === Prepare for Composition ===
         if args.compose_model == 'composable_unet':
             if len(models) != 2:
@@ -162,23 +190,36 @@ if __name__ == "__main__":
             "shape": (cfg.dataset.sampling.batch_size, cfg.dataset.channels, cfg.dataset.image_size,
                       cfg.dataset.image_size),
             "timesteps": cfg.diffusion.timesteps,
-            "beta_min": cfg.diffusion.beta_min,
-            "beta_max": cfg.diffusion.beta_max,
+            "beta_min": cfg.diffusion.beta_start,
+            "beta_max": cfg.diffusion.beta_end,
             "device": device
         }
 
         if args.compose_model == 'ito':
-            logger.info(f"Using ito_sampler with weights: {args.weights}")
+            weights = [0.4, 0.6]
+            logger.info(f"Using ito_sampler with weights: {weights}")
             composed_samples = ito_sampler(
-                models=models,
-                weights=args.weights,
-                **sampling_params
+                models,
+                torch.Size((4,3, 32,32)),
+                cfg.diffusion.timesteps,
+                cfg.diffusion.beta_start,
+                cfg.diffusion.beta_end,
+                weights=weights,
+                device=device,
             )
         elif args.compose_model == 'composable_unet':
             logger.info("Using composable_unet_sampler")
+            # composed_samples = composable_unet_sampler(
+            #     model=composition_model,
+            #     **sampling_params
+            # )
             composed_samples = composable_unet_sampler(
-                model=composition_model,
-                **sampling_params
+                composition_model,
+                torch.Size((4, 3, 32, 32)),
+                cfg.diffusion.timesteps,
+                cfg.diffusion.beta_start,
+                cfg.diffusion.beta_end,
+                device=device,
             )
         else:
             raise ValueError(f"Unknown compose_model: {args.compose_model}")
@@ -192,7 +233,7 @@ if __name__ == "__main__":
             composed_samples=composed_samples,
             compose_model_name=args.compose_model,
             sampling_params=sampling_params,
-            save_path=logger.get_image_dir()
+            save_path=dirs.get("results_samples")
         )
         logger.info(f"Visualization grid saved in {logger.get_image_dir()}")
 
