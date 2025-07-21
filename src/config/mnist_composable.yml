@@ -218,6 +218,17 @@ model:
     architecture:
       base_dim: 128
       channels: 3
+  comp_unet:
+    optimizer:
+      params:
+        lr: 0.0001  # A slightly lower learning rate for more stable training
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
+    architecture:
+      concept_dim: 3
+      unet_dim: 64
+      unet_dim_mults: [1, 2, 4] # UNet dimensional multipliers
 # ===================================================================
 # EXPERIMENT PROFILES
 # Defines sets of overrides that can be activated with --profile <name>
@@ -232,17 +243,17 @@ profiles:
     # The 'sanity' profile is for quick overfitting tests.
     description: "A quick sanity check on a small batch to test for bugs."
     enabled: True
-    num_examples: 200
+    num_examples: 8
     dataset:
-      batch_size: 50 # Use a very small batch size
+      batch_size: 4 # Use a very small batch size
     diffusion:
       timesteps: 1000
     training:
-      epochs: 200 # Only run for a few epochs
-      log_every_step: 200 # Log every single step. Should be same as num_examples
-      log_every_epoch: 20
-      save_every_epoch: 20
-      save_every_step: 200
+      epochs: 10 # Only run for a few epochs
+      log_every_step: 4 # Log every single step. Should be same as num_examples
+      log_every_epoch: 2
+      save_every_epoch: 2
+      save_every_step: 4
   debug:
     # The 'debug' profile disables logging for faster local iteration.
     description: "A debug run with logging disabled."

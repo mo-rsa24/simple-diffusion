@@ -11,8 +11,8 @@ class SlotModule(nn.Module):
         super().__init__()
         self.unet = SlotDiffusionUNet(dim=dim, channels=channels)
 
-    def forward(self, x):
-        return self.unet(x)
+    def forward(self, x, t):
+        return self.unet(x, t)
 
 class ComposableDiffusionModel(nn.Module):
     """Factorized diffusion model with three composable slots."""
@@ -25,9 +25,9 @@ class ComposableDiffusionModel(nn.Module):
         self.gating_linear = nn.Linear(channels, base_dim)
 
     def forward(self, x, t=None):
-        shape = self.shape_slot(x)
-        color = self.color_slot(x)
-        box = self.box_slot(x)
+        shape = self.shape_slot(x, t)
+        color = self.color_slot(x, t)
+        box = self.box_slot(x, t)
         merged = self.merge([shape, color, box])
         return {"shape": shape, "color": color, "box": box, "merged": merged}
 

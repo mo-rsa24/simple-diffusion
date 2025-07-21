@@ -8,15 +8,12 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from src.models.composable_diffusion import ComposableDiffusionModel
-from src.models.vanilla.diffusion import generate_batch
-from src.models.vanilla.ema import EMA
 from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.train.logging.training_logger_utils import log_training_start, log_batch, log_training_stats, log_training_end, \
     visualize_epoch
 from src.utils.calculations import q_sample
 from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.sampling import composable_expert_sampler
-from src.utils.visualization import visualize_images, save_side_by_side_images
 
 def train(
     cfg,
@@ -78,20 +75,21 @@ def train(
 
                 # --- Calculate the loss for each expert on its specific region ---
 
-                # 1. Shape Expert Loss (calculated on the combined foreground)
                 foreground_mask = (digit_mask + bbox_mask).clamp(0, 1)
                 loss_shape = (F.mse_loss(pred_noise_shape, noise,
                                          reduction='none') * foreground_mask).sum() / foreground_mask.sum()
-
-                # 2. Color Expert Loss (calculated only on the digit pixels)
                 loss_color = (F.mse_loss(pred_noise_color, noise,
                                          reduction='none') * digit_mask).sum() / digit_mask.sum()
-
-                # 3. Bounding Box Expert Loss (calculated only on the bbox pixels)
                 loss_box = (F.mse_loss(pred_noise_box, noise, reduction='none') * bbox_mask).sum() / bbox_mask.sum()
 
-                # The total loss is the sum of the specialized expert losses
-                loss = loss_shape + loss_color + loss_box
+                # --- CHANGE: Add loss for the merged output ---
+                pred_noise_merged = out["merged"]
+                # This loss is unmasked, training the merge layers on the whole image
+                loss_merged = F.mse_loss(pred_noise_merged, noise)
+
+                # --- CHANGE: Update the total loss ---
+                # Add the merged loss. You can add a weighting factor (e.g., 0.5) if needed.
+                loss = loss_shape + loss_color + loss_box + loss_merged
 
                 loss.backward()
                 optimizer.step()

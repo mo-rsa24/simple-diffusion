@@ -134,6 +134,94 @@ def composable_expert_sampler(model: ComposableDiffusionModel, cfg, device):
 
     return img.clamp(-1, 1)
 
+
+@torch.no_grad()
+def composable_expert_sampler2(
+        model: ComposableUnet,
+        cfg,
+        device,
+        digit_labels,
+        digit_color_labels,
+        bbox_color_labels,
+        guidance_scale=7.5
+):
+    """
+    Samples from a ComposableUnet using multiple experts and Classifier-Free Guidance (CFG).
+
+    This sampler performs composition by:
+    1. Running the model with and without conditioning.
+    2. Getting separate noise predictions for each expert (digit, bbox, background).
+    3. Summing the expert predictions to get a single composed noise.
+    4. Applying CFG to the composed noise.
+    5. Using the final guided noise to denoise the image for one step.
+    """
+    constants = get_diffusion_constants(cfg, device)
+    alphas = constants["alphas"]
+    alphas_cumprod = constants["alphas_cumprod"]
+    posterior_variance = constants["posterior_variance"]
+    timesteps = cfg.diffusion.timesteps
+    batch_size = digit_labels.shape[0]
+
+    # Start with random noise
+    img = torch.randn((batch_size, cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size), device=device)
+
+    # Create unconditional labels (null tokens). Assuming class index 10 is the null class.
+    uncond_digit_labels = torch.full_like(digit_labels, 10)
+    uncond_digit_color_labels = torch.full_like(digit_color_labels, 10)
+    uncond_bbox_color_labels = torch.full_like(bbox_color_labels, 10)
+
+    model.eval()
+
+    for i in tqdm(reversed(range(timesteps)), desc="Composable Expert Sampling", total=timesteps):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # --- Classifier-Free Guidance Setup ---
+        # Create a double-sized batch. First half is conditional, second is unconditional.
+        img_double = torch.cat([img] * 2)
+        t_double = torch.cat([t] * 2)
+
+        # Concatenate conditional and unconditional labels for the double batch
+        d_labels = torch.cat([digit_labels, uncond_digit_labels])
+        dc_labels = torch.cat([digit_color_labels, uncond_digit_color_labels])
+        bc_labels = torch.cat([bbox_color_labels, uncond_bbox_color_labels])
+
+        # --- Predict noise for both conditional and unconditional inputs ---
+        pred_noise_experts_raw = model(img_double, t_double, d_labels, dc_labels, bc_labels)
+
+        # Reshape to separate experts: (B * 2, num_experts, C, H, W)
+        b, _, h, w = pred_noise_experts_raw.shape
+        c = model.channels
+        pred_noise_experts = pred_noise_experts_raw.view(b, model.num_experts, c, h, w)
+
+        # --- Compose Experts ---
+        # As per the paper, the final score is the sum of the expert scores.
+        # Here, we sum the noise predictions from each expert.
+        composed_noise = torch.sum(pred_noise_experts, dim=1)  # Shape: (B * 2, C, H, W)
+
+        # --- Apply Classifier-Free Guidance ---
+        # Split the composed noise back into conditional and unconditional parts
+        noise_pred_cond, noise_pred_uncond = composed_noise.chunk(2, dim=0)
+
+        # The core CFG equation, analogous to the paper's conjunction formula
+        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+
+        # --- Denoise for one step (standard DDPM p_sample logic) ---
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * noise_pred)
+
+        if i == 0:
+            img = model_mean
+        else:
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance[i]) * noise
+
+    return img.clamp(-1, 1)
+
 @torch.no_grad()
 def composable_unet_sampler(model, shape, timesteps, beta_min, beta_max, device="cpu"):
     """
@@ -172,6 +260,75 @@ def composable_unet_sampler(model, shape, timesteps, beta_min, beta_max, device=
             x += torch.sqrt(sigma_t_sq) * noise
 
     return x.clamp(-1, 1)
+
+def get_beta_schedule(beta_schedule, beta_start, beta_end, num_diffusion_timesteps):
+    if beta_schedule == 'linear':
+        betas = torch.linspace(beta_start, beta_end, num_diffusion_timesteps, dtype=torch.float32)
+    # Add other schedule types if needed (e.g., 'cosine')
+    else:
+        raise NotImplementedError(f"unknown beta schedule: {beta_schedule}")
+    return betas
+
+def sample_compositional_unet(model, cfg, device, concepts_to_sample):
+    """
+    Sampler for the CompositionalUNet model.
+
+    Args:
+        model: The trained CompositionalUNet model.
+        cfg: The configuration object.
+        device: The device to run on (e.g., 'cuda').
+        concepts_to_sample: A list of one-hot encoded concept vectors to be composed.
+    """
+    model.eval()
+
+    # Prepare constants from the diffusion configuration
+    T = cfg.diffusion.timesteps
+    betas = get_beta_schedule(
+        beta_schedule='linear',
+        beta_start=cfg.diffusion.beta_start,
+        beta_end=cfg.diffusion.beta_end,
+        num_diffusion_timesteps=T,
+    ).to(device)
+
+    alphas = 1. - betas
+    alphas_cumprod = torch.cumprod(alphas, axis=0)
+    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+    sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
+    sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+    posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+
+    # Start with random noise
+    batch_size = 1
+    img_size = cfg.dataset.image_size
+    channels = cfg.dataset.channels
+    img = torch.randn(batch_size, channels, img_size, img_size, device=device)
+
+    # The reverse diffusion process
+    for i in reversed(range(0, T)):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+
+        # Predict the noise using the compositional model
+        # We use the "merged" output which is the average of all concept predictions
+        predicted_noise = model(img, t, concepts_to_sample)["merged"]
+
+        # The denoising step formula
+        beta_t = betas[t].view(-1, 1, 1, 1)
+        sqrt_one_minus_alphas_cumprod_t = sqrt_one_minus_alphas_cumprod[t].view(-1, 1, 1, 1)
+        sqrt_recip_alphas_t = sqrt_recip_alphas[t].view(-1, 1, 1, 1)
+
+        # Current image state from the predicted noise
+        model_mean = sqrt_recip_alphas_t * (img - beta_t * predicted_noise / sqrt_one_minus_alphas_cumprod_t)
+
+        if i == 0:
+            img = model_mean
+        else:
+            posterior_variance_t = posterior_variance[t].view(-1, 1, 1, 1)
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    # Denormalize and return the final image
+    return img.clamp(-1, 1)
+
 
 @torch.no_grad()
 def ddpm_sampler(model, cfg, device, conds=None):

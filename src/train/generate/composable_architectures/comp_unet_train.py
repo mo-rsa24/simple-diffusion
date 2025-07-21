@@ -18,12 +18,11 @@ from src.utils.checkpoint_manager import CheckpointManager
 from src.models.vanilla.diffusion import generate_batch
 from src.utils.calculations import q_sample
 from src.models.vanilla.ema import EMA
-from src.utils.sampling import ddpm_sampler
+from src.utils.sampling import ddpm_sampler, sample_compositional_unet
 
 
-def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, device, writer=None, wandb_run=None):
+def train(cfg, dirs: Dict, model, train_loader: DataLoader, val_loader: DataLoader, logger, device, writer=None, wandb_run=None):
     optimizer = Adam(model.parameters(), **cfg.optimizer.params)
-    scaler = GradScaler() if getattr(cfg.training, "scaler", "") == "amp" else None
     start_time = time.time()
     log_training_start(
         logger,
@@ -65,21 +64,44 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
                                    timesteps=cfg.diffusion.timesteps,
                                    beta_start=cfg.diffusion.beta_start,
                                    beta_end=cfg.diffusion.beta_end)
-                conds = [batch.get("digit_label", None), batch.get("color_label", None), batch.get("bbox_label", None)]
-                conds = [c.to(device) if torch.is_tensor(c) else None for c in conds]
 
+                # --- Define Concepts (One-hot vectors) ---
+                # Assuming concept_dim=3 for the GatingNetwork
+                # Shape=[1,0,0], Color=[0,1,0], Box=[0,0,1]
+                shape_concept = F.one_hot(torch.tensor([0]), num_classes=3).float().squeeze(0).to(device)
+                color_concept = F.one_hot(torch.tensor([1]), num_classes=3).float().squeeze(0).to(device)
+                box_concept = F.one_hot(torch.tensor([2]), num_classes=3).float().squeeze(0).to(device)
+                concepts = [shape_concept, color_concept, box_concept]
+
+                # --- Forward Pass ---
                 optimizer.zero_grad(set_to_none=True)
-                with autocast(enabled=scaler is not None):
-                    pred = model(x_noisy, t, conds)
-                    loss = F.mse_loss(pred, noise)
-                if scaler:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    optimizer.step()
-                ema.update()
+                # The model returns a dictionary of predictions
+                noise_pred_dict = model(x_noisy, t, concepts)
+
+                # --- Masked Loss Calculation (Crucial Part) ---
+                # Get masks from the batch
+                digit_mask = batch['digit_mask'].to(device)
+                bbox_mask = batch['bbox_mask'].to(device)
+                foreground_mask = (digit_mask + bbox_mask).clamp(0, 1)
+
+                # Calculate loss for each expert on its specific region
+                loss_shape = (F.mse_loss(noise_pred_dict["shape"], noise,
+                                         reduction='none') * foreground_mask).sum() / foreground_mask.sum()
+                loss_color = (F.mse_loss(noise_pred_dict["color"], noise,
+                                         reduction='none') * digit_mask).sum() / digit_mask.sum()
+                loss_box = (F.mse_loss(noise_pred_dict["box"], noise,
+                                       reduction='none') * bbox_mask).sum() / bbox_mask.sum()
+
+                # Also train the merged output to ensure averaging is learned
+                loss_merged = F.mse_loss(noise_pred_dict["merged"], noise)
+
+                # The total loss is the sum of the specialized expert losses + merged loss
+                loss = loss_shape + loss_color + loss_box + loss_merged
+
+                # --- Backward Pass and Optimization ---
+                loss.backward()
+                optimizer.step()
+
                 running_loss += loss.item()
                 global_step += 1
 
@@ -92,21 +114,22 @@ def train(cfg, dirs: Dict, model, ema: EMA, train_loader: DataLoader, logger, de
             epoch_time = time.time() - epoch_start
             log_epoch_summary(logger, epoch, cfg.training.epochs, avg_loss, epoch_time)
             log_json(logger, "Epoch Summary", epoch=epoch, train_loss=avg_loss, duration=epoch_time)
-            model.eval()
-            real_batch_data = next(iter(train_loader))
-            real_batch = real_batch_data['image'].to(device)
-            conds = [
-                real_batch_data.get("digit_label", None),
-                real_batch_data.get("color_label", None),
-                real_batch_data.get("bbox_label", None)
-            ]
-            conds = [c.to(device) if torch.is_tensor(c) else None for c in conds]
-            for i in range(len(conds)):
-                if conds[i] is not None:
-                    conds[i] = conds[i][:cfg.sampling.batch_size]
-            generated = ddpm_sampler(model, cfg, device, conds)
+            """
+             👉 Sample Here 👈
+            """
+
             if epoch % cfg.training.log_every_epoch == 0:
-                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run=wandb_run, writer=writer)
+                model.eval()
+                real_batch = next(iter(val_loader))
+                real_batch = real_batch['image'].to(device)
+                shape_concept = F.one_hot(torch.tensor([0]), num_classes=3).float().squeeze(0).to(device)
+                color_concept = F.one_hot(torch.tensor([1]), num_classes=3).float().squeeze(0).to(device)
+                box_concept = F.one_hot(torch.tensor([2]), num_classes=3).float().squeeze(0).to(device)
+
+                # The sampler expects a list of the concepts to be used
+                concepts_to_generate = [shape_concept, color_concept, box_concept]
+                generated = sample_compositional_unet(model, cfg, device, concepts_to_generate)
+                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
