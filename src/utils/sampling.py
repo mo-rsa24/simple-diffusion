@@ -26,6 +26,103 @@ def get_diffusion_constants(cfg, device):
     }
 
 
+def get_schedule(timesteps, beta_min, beta_max, device):
+    """
+    Generates a linear noise schedule.
+    """
+    betas = torch.linspace(beta_min, beta_max, timesteps, device=device)
+    alphas = 1. - betas
+    alphas_hat = torch.cumprod(alphas, dim=0)
+    return betas, alphas, alphas_hat
+
+
+@torch.no_grad()
+def ito_sampler(models, shape, timesteps, beta_min, beta_max, weights=None, device="cpu"):
+    """
+    Samples from a combined score function using the Itô Density Estimator method.
+    This is a training-free composition method.
+    Args:
+        models (list): A list of pre-trained UNet models.
+        shape (tuple): The shape of the output tensor (B, C, H, W).
+        timesteps (int): The number of denoising steps.
+        beta_min (float): The minimum beta value for the noise schedule.
+        beta_max (float): The maximum beta value for the noise schedule.
+        weights (list, optional): A list of weights for combining the models. Defaults to equal weighting.
+        device (str, optional): The device to run on. Defaults to "cpu".
+    Returns:
+        torch.Tensor: The generated samples.
+    """
+    if weights is None:
+        weights = [1.0 / len(models)] * len(models)
+
+    betas, alphas, alphas_hat = get_schedule(timesteps, beta_min, beta_max, device)
+
+    x = torch.randn(shape, device=device)
+
+    for t in reversed(range(timesteps)):
+        t_tensor = torch.full((shape[0],), t, device=device, dtype=torch.long)
+
+        # The combined score is the weighted sum of individual model scores (predicted noise)
+        combined_noise_pred = torch.zeros_like(x)
+        for model, weight in zip(models, weights):
+            model.eval()
+            combined_noise_pred += weight * model(x, t_tensor)
+
+        alpha_t = alphas[t]
+        alpha_hat_t = alphas_hat[t]
+
+        # Denoising step using the combined noise prediction
+        # (xt - (1-alpha_t)/sqrt(1-alpha_hat_t) * pred_noise) / sqrt(alpha_t)
+        x = (1 / torch.sqrt(alpha_t)) * (x - ((1 - alpha_t) / torch.sqrt(1 - alpha_hat_t)) * combined_noise_pred)
+
+        if t > 0:
+            # Add noise for the next step
+            noise = torch.randn_like(x)
+            sigma_t_sq = (1. - alphas_hat[t - 1]) / (1. - alphas_hat[t]) * betas[t]
+            x += torch.sqrt(sigma_t_sq) * noise
+
+    return x.clamp(-1, 1)
+
+
+@torch.no_grad()
+def composable_unet_sampler(model, shape, timesteps, beta_min, beta_max, device="cpu"):
+    """
+    Samples from a ComposableUNet.
+    Args:
+        model (nn.Module): The ComposableUNet model.
+        shape (tuple): The shape of the output tensor (B, C, H, W).
+        timesteps (int): The number of denoising steps.
+        beta_min (float): The minimum beta value for the noise schedule.
+        beta_max (float): The maximum beta value for the noise schedule.
+        device (str, optional): The device to run on. Defaults to "cpu".
+    Returns:
+        torch.Tensor: The generated samples.
+    """
+    betas, alphas, alphas_hat = get_schedule(timesteps, beta_min, beta_max, device)
+
+    x = torch.randn(shape, device=device)
+    model.eval()
+
+    for t in reversed(range(timesteps)):
+        t_tensor = torch.full((shape[0],), t, device=device, dtype=torch.long)
+
+        # Get the fused noise prediction from the composable model
+        pred_noise = model(x, t_tensor)
+
+        alpha_t = alphas[t]
+        alpha_hat_t = alphas_hat[t]
+
+        # Denoising step
+        x = (1 / torch.sqrt(alpha_t)) * (x - ((1 - alpha_t) / torch.sqrt(1 - alpha_hat_t)) * pred_noise)
+
+        if t > 0:
+            # Add noise for the next step
+            noise = torch.randn_like(x)
+            sigma_t_sq = (1. - alphas_hat[t - 1]) / (1. - alphas_hat[t]) * betas[t]
+            x += torch.sqrt(sigma_t_sq) * noise
+
+    return x.clamp(-1, 1)
+
 @torch.no_grad()
 def ddpm_sampler(model, cfg, device, conds=None):
     """
