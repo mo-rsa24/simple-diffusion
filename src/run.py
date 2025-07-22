@@ -147,7 +147,7 @@ if __name__ == "__main__":
                     train_disentangled(cfg, dirs, model, ema, train_loader, logger, device, args.loss_mask, writer, wandb_run)
                 else:
                     from src.train.generate.simple_diffusion.train import train as pixel_train
-                    pixel_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
+                    pixel_train(cfg, dirs, model, train_loader, val_loader,  logger, device, writer, wandb_run)
             elif args.gen_model == "composable_vanilla":
                 model_params = dict(cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device)

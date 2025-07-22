@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from src.utils.sampling import ddpm_sampler
 
 
-def train(cfg: Box, dirs: Dict, model: ComposableUnet, ema: EMA, train_loader: DataLoader, logger, device, writer = None, wandb_run = None):
+def train(cfg: Box, dirs: Dict, model: ComposableUnet, train_loader: DataLoader, val_loader: DataLoader, logger, device, writer = None, wandb_run = None):
     model.train()
     if cfg.optimizer.type.lower() == "adam":
         optimizer = Adam(model.parameters(), **cfg.optimizer.params)
@@ -75,13 +75,9 @@ def train(cfg: Box, dirs: Dict, model: ComposableUnet, ema: EMA, train_loader: D
                     beta_start=cfg.diffusion.beta_start,
                     beta_end=cfg.diffusion.beta_end,
                 ) #  inside = sqrt(alpha_bar) * x0 + sqrt(1-alpha_bar) * noise
-                with autocast():
-                  pred_noise = model(x_noisy, t) # e_theta (inside)
 
+                pred_noise = model(x_noisy, t) # e_theta (inside)
 
-
-                # 3) cast back to FP32 for loss
-                pred_noise = pred_noise.float()
                 if cfg.diffusion.loss_type == 'l1':
                     loss = F.l1_loss(noise, pred_noise)
                 elif cfg.diffusion.loss_type == 'l2':
@@ -89,14 +85,9 @@ def train(cfg: Box, dirs: Dict, model: ComposableUnet, ema: EMA, train_loader: D
                 elif cfg.diffusion.loss_type == "huber":
                     loss = F.smooth_l1_loss(noise, pred_noise)
 
-                # backward with the scaler
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
+                loss.backward()
+                optimizer.step()
 
-                # optional: free any cached fragments
-
-                ema.update()
                 torch.cuda.empty_cache()
 
                 running_loss += loss.item()
@@ -115,11 +106,12 @@ def train(cfg: Box, dirs: Dict, model: ComposableUnet, ema: EMA, train_loader: D
 
             if epoch % cfg.training.log_every_epoch == 0:
                 model.eval()
-                real_batch = next(iter(train_loader))
+                real_batch = next(iter(val_loader))
                 real_batch = real_batch['image'].to(device)
 
                 generated = ddpm_sampler(model, cfg, device)
-                visualize_epoch(generated, real_batch, dirs, epoch=epoch, wandb_run = wandb_run, writer = writer)
+                prefix = f"{cfg.experiment_id}_run_{cfg.run_id}_sample"
+                visualize_epoch(generated, real_batch, dirs, epoch=epoch, prefix=prefix, wandb_run = wandb_run, writer = writer)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 checkpoint_manager.save(model, optimizer, scheduler, epoch, global_step)

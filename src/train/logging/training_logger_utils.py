@@ -113,7 +113,7 @@ def visualize_epoch(generated: torch.Tensor, real: torch.Tensor,  dirs: Dict, ep
     # --- 2) Side-by-side comparisons (one per index) ---
     side_by_side_dir: Path = dirs.get("results_side_by_side") / Path(f"epoch_{epoch}")
     side_by_side_dir.mkdir(parents=True, exist_ok=True)
-    save_side_by_side_images(real, generated, side_by_side_dir)
+    save_side_by_side_images(real, generated, side_by_side_dir, prefix)
 
     # --- 3) TensorBoard logging ---
     if writer:

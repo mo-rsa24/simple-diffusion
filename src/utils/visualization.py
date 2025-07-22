@@ -107,6 +107,7 @@ import torch
 def save_side_by_side_images(real: torch.Tensor,
                              generated: torch.Tensor,
                              side_by_side_dir: Path,
+                             prefix: str = "sample_",
                              input_range: str = "auto"):
     """
     Save paired real vs. generated images side by side.
@@ -165,7 +166,7 @@ def save_side_by_side_images(real: torch.Tensor,
         axes[1].set_title("Generated"); axes[1].axis("off")
 
         fig.tight_layout()
-        fig.savefig(side_by_side_dir / Path(f"sample_{i:03d}_comparison.png"))
+        fig.savefig(side_by_side_dir / Path(f"{prefix}_{i:03d}_comparison.png"))
         plt.close(fig)
 
 def visualize_predictions(model,

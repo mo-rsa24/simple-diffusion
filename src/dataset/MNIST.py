@@ -1,9 +1,7 @@
-import torch
 from box import Box
 from torch.utils.data import Dataset
 from torchvision import datasets
 from torch.utils.data import DataLoader
-from src.config.configs import Config
 from src.dataset.transforms import mnist_transform
 
 

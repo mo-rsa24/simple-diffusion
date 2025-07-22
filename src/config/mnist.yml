@@ -79,6 +79,9 @@ model:
   vanilla:
     # Vanilla Unet uses the default dataset and training settings.
     # We only override the learning rate.
+    training:
+      epochs: 200
+      log_every_epoch: 50
     dirs:
       results_dir:
         side_by_side: "./side_by_side"
@@ -94,7 +97,6 @@ model:
       self_condition: false
       resnet_block_groups: 4
       use_attention_at: [ 1 ]
-
   vae:
     # VAE training requires its own specific parameters.
     # It inherits the default dataset settings.
@@ -157,14 +159,14 @@ profiles:
     enabled: True
     num_examples: 10
     dataset:
-      batch_size: 5 # Use a very small batch size
+      batch_size: 5  # Use a very small batch size
     diffusion:
-      timesteps: 500
+      timesteps: 1000
     training:
-      epochs: 10 # Only run for a few epochs
-      log_every_step: 5 # Log every single step. Should be same as num_examples
-      log_every_epoch: 2
-      save_every_epoch: 5
+      epochs: 100 # Only run for a few epochs
+      log_every_step: 10 # Log every single step. Should be same as num_examples
+      log_every_epoch: 10
+      save_every_epoch: 10
       save_every_step: 10
   debug:
     # The 'debug' profile disables logging for faster local iteration.
