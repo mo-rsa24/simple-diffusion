@@ -26,7 +26,6 @@ def train(cfg: Box, dirs: Dict, model: ComposableUnet, train_loader: DataLoader,
     else:
         raise ValueError(f"Unsupported optimizer: {cfg.optimizer.type}")
     scheduler = None  # add if needed
-    scaler = GradScaler()
     start_time = time.time()
     log_training_start(
         logger,
@@ -110,7 +109,7 @@ def train(cfg: Box, dirs: Dict, model: ComposableUnet, train_loader: DataLoader,
                 real_batch = real_batch['image'].to(device)
 
                 generated = ddpm_sampler(model, cfg, device)
-                prefix = f"{cfg.experiment_id}_run_{cfg.run_id}_sample"
+                prefix = f"{cfg.experiment_id}_run_{cfg.run_id}_sample_epoch_{epoch}"
                 visualize_epoch(generated, real_batch, dirs, epoch=epoch, prefix=prefix, wandb_run = wandb_run, writer = writer)
 
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
