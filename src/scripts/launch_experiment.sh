@@ -160,6 +160,36 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo -e "${CYAN}$SBATCH_CMD${NC}\n"
     success "✅ DRY RUN complete. No job was submitted."
 
+    info "Executing run.py directly..."
+
+    # Build the python command
+    PY_CMD=(
+        "python3" "src/run.py"
+        "--experiment_id" "$EXP_ID"
+        "--run_id" "$RUN_ID"
+        "--dataset" "$DATASET"
+        "--task" "$TASK"
+        "--gen_model" "$GEN_MODEL"
+        "--profile" "$PROFILE"
+        "--dry-run" # Pass the dry-run flag
+    )
+    # Add optional arguments
+    if [[ -n "$COLOR" ]]; then PY_CMD+=("--color" "$COLOR"); fi
+    if [[ -n "$NUMBER" ]]; then PY_CMD+=("--number" "$NUMBER"); fi
+    if [[ -n "$LOSS_MASK" ]]; then PY_CMD+=("--loss_mask" "$LOSS_MASK"); fi
+    if [[ -n "$DIGIT_COLOR_LABEL" ]]; then PY_CMD+=("--digit_color_label" "$DIGIT_COLOR_LABEL"); fi
+    if [[ -n "$BBOX_COLOR_LABEL" ]]; then PY_CMD+=("--bbox_color_label" "$BBOX_COLOR_LABEL"); fi
+    if [[ "$USE_WANDB" == "true" ]]; then PY_CMD+=("--use_wandb"); fi
+    if [[ "$USE_TB" == "true" ]]; then PY_CMD+=("--use_tensorboard"); fi
+    if [[ "$RESUME" == "true" ]]; then PY_CMD+=("--resume"); fi
+
+    echo -e "${DIM}Executing command:${NC}"
+    echo -e "${CYAN}${"${PY_CMD[@]}"}${NC}\n"
+
+    # Execute the python command
+    eval "${PY_CMD[@]}"
+
+    success "\n✅ DRY RUN complete. No job was submitted."
 else
     info "Submitting job to SLURM..."
     echo -e "${CYAN}$SBATCH_CMD${NC}" | tee -a "$LOG_FILE"

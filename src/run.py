@@ -11,6 +11,16 @@ from src.train.generate.vae.train_beta_vae import train_beta_vae
 from src.train.logging.training_logger_utils import log_exception
 from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.setup import load_config, build_dirs, init_observers, save_config
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.syntax import Syntax
+    from rich.text import Text
+    from rich.prompt import Confirm
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
 
 
 def parse_args():
@@ -65,6 +75,53 @@ def parse_args():
     )
     return p.parse_args()
 
+
+def display_dry_run_summary(args, cfg, base_dir):
+    """
+    Displays a rich summary of the configuration for a dry run.
+    """
+    if not RICH_AVAILABLE:
+        print("Rich library not installed. Please install it with 'pip install rich' for a better dry-run output.")
+        print("--- Arguments ---")
+        print(vars(args))
+        print("\n--- Configuration ---")
+        print(cfg)
+        return
+
+    console = Console()
+    console.print(Panel(Text("🚀 Experiment Dry Run Summary", justify="center", style="bold cyan"),
+                        border_style="cyan"))
+
+    # --- Arguments Table ---
+    arg_table = Table(title="CLI Arguments", show_header=True, header_style="bold magenta", expand=True)
+    arg_table.add_column("Argument", style="dim", width=25, no_wrap=True)
+    arg_table.add_column("Value", style="bold")
+
+    arg_dict = vars(args)
+    for arg, value in arg_dict.items():
+        if value is not None and value is not False:
+            arg_table.add_row(f"--{arg}", str(value))
+
+    console.print(arg_table)
+
+    # --- Derived Paths ---
+    path_table = Table(title="Derived Paths", show_header=True, header_style="bold green", expand=True)
+    path_table.add_column("Path Type", style="dim", width=25, no_wrap=True)
+    path_table.add_column("Full Path")
+
+    dirs = build_dirs(cfg, base_dir=base_dir, gen_modeL=args.gen_model)
+    for name, path in dirs.items():
+        path_table.add_row(name.capitalize(), str(path))
+
+    console.print(path_table)
+
+    # --- Full Configuration ---
+    config_str = str(cfg)
+    syntax = Syntax(config_str, "yaml", theme="one-dark", line_numbers=True)
+    console.print(Panel(syntax, title="[bold yellow]Merged Configuration[/bold yellow]", border_style="yellow"))
+
+    console.print("[bold green]✅ Config verified. No job was submitted.[/bold green]")
+
 if __name__ == "__main__":
     args = parse_args()
     config_path = f"src/config/{args.dataset.lower()}.yml"
@@ -102,7 +159,7 @@ if __name__ == "__main__":
     if args.array_index is not None:
         logger.info(f"SLURM array index: {args.array_index}")
     if args.dry_run:
-        print(cfg)
+        display_dry_run_summary(args, cfg, base_dir)
         exit(0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_config(cfg, dirs.get('hyperparameters'), os.path.basename(config_path))
