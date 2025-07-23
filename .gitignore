@@ -3,6 +3,7 @@ data/
 .idea/
 .vscode/
 __pycache__/
+simple-diffusion/
 *.pyo
 *.pyd
 *.db

@@ -157,9 +157,9 @@ profiles:
     # The 'sanity' profile is for quick overfitting tests.
     description: "A quick sanity check on a small batch to test for bugs."
     enabled: True
-    num_examples: 100
+    num_examples: 1
     dataset:
-      batch_size: 20 # Use a very small batch size
+      batch_size: 1 # Use a very small batch size
     diffusion:
       timesteps: 1000
     training:

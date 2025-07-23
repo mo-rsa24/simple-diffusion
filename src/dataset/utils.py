@@ -56,7 +56,7 @@ def get_mnist_loaders(name: str = "MNIST", batch_size: int = 128):
     return loader(train_ds, True), loader(val_ds, False), loader(test_ds, False)
 
 
-def get_colored_loaders(cfg: Box, dataset:str = "MNIST", variant: str="foreground", root="./data", number: int = None, task: str = "classify")-> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_colored_loaders(cfg: Box, dataset:str = "MNIST", variant: str="foreground", root="./data", number: int = None, task: str = "classify", digit_color_label:int=None, bbox_color_label:int=None)-> Tuple[DataLoader, DataLoader, DataLoader]:
     """Return train/val/test DataLoaders for MNIST or FashionMNIST."""
     transform_list = []
     transform_list.append(transforms.ToTensor())
@@ -77,8 +77,8 @@ def get_colored_loaders(cfg: Box, dataset:str = "MNIST", variant: str="foregroun
         test_ds = ColoredMNISTWithBBox(root=root, train=False, variant=variant, number=number, transform=transform)
     else:
         from src.dataset.ColoredMNIST import ColoredMNIST
-        train_ds = ColoredMNIST(root=root, train=True, variant=variant, number=number, transform=transform)
-        test_ds = ColoredMNIST(root=root, train=False, variant=variant, number=number, transform=transform)
+        train_ds = ColoredMNIST(root=root, train=True, variant=variant, number=number, transform=transform, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label)
+        test_ds = ColoredMNIST(root=root, train=False, variant=variant, number=number, transform=transform, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label)
 
     train_len = int(0.9 * len(train_ds))
     val_len   = len(train_ds) - train_len
@@ -123,9 +123,9 @@ def get_composable_separate_loader(cfg: Box, number: int = None, digit_color_lab
     }
     return loaders
 
-def get_separate_loader(cfg: Box, dataset: str = "MNIST", number: int = None, task: str = "classify")-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
+def get_separate_loader(cfg: Box, dataset: str = "MNIST", number: int = None, task: str = "classify", digit_color_label:int=None, bbox_color_label:int=None)-> Dict[str, Tuple[DataLoader, DataLoader, DataLoader]]:
     loaders = {
-        "fg": get_colored_loaders(cfg, dataset=dataset, variant="foreground", number=number, task=task),
+        "fg": get_colored_loaders(cfg, dataset=dataset, variant="foreground", number=number, task=task, digit_color_label=digit_color_label, bbox_color_label=bbox_color_label),
         "bg": get_colored_loaders(cfg, dataset=dataset, variant="background", number=number, task=task),
     }
     return loaders

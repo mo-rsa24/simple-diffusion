@@ -97,7 +97,7 @@ GENERATION_MODEL_REGISTRY = {
 
 DATASET_LOADERS = {
     "MNIST": lambda cfg, **kwargs: get_mnist_loaders(cfg, number=kwargs.get("number")),
-    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(cfg, number=kwargs.get("number"), task=kwargs.get("task", "classify")),
+    "MNIST_COLOR": lambda cfg, **kwargs: get_separate_loader(cfg, number=kwargs.get("number"), task=kwargs.get("task", "classify"), digit_color_label=kwargs.get("digit_color_label"), bbox_color_label=kwargs.get("bbox_color_label")),
     "MNIST_BBOX": lambda cfg, **kwargs: get_separate_loader(cfg, dataset="MNIST_BBOX", number=kwargs.get("number"), task=kwargs.get("task", "classify")),
     "MNIST_COMPOSABLE": lambda cfg, **kwargs: get_composable_separate_loader(cfg, number=kwargs.get("number"), digit_color_label=kwargs.get("digit_color_label"), bbox_color_label=kwargs.get("bbox_color_label")),
 }
