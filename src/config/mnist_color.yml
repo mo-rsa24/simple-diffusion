@@ -153,7 +153,20 @@ model:
         params:
           kl_weight: 0.000005
       embed_dim: 4
-
+  vpsde:
+    # The LDM's Unet has its own architecture. # It will use the pre-trained VAE, so it doesn't need VAE params.
+    dirs:
+      results_dir:
+        side_by_side: "./side_by_side"
+    optimizer:
+      params:
+        lr: 0.0001
+    training:
+      epochs: 250 # VAEs need sufficient training
+      log_every_epoch: 50
+    architecture:
+      in_channels: 3
+      time_emb_dim: 32
   ldm:
     # The LDM's Unet has its own architecture. # It will use the pre-trained VAE, so it doesn't need VAE params.
     dirs:

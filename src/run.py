@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 from src.models.ldm.autoencoder import AutoencoderKL
 from src.models.vanilla.ema import EMA
+from src.models.vpsde.ColoredMNISTScoreModel import VPSDE
 from src.monitoring.alert_notifier import send_failure_email
 from src.registry.mappings import DATASET_LOADERS, CLASSIFIER_MODEL_REGISTRY, GENERATION_MODEL_REGISTRY
 from src.task import classify_task
@@ -11,6 +12,13 @@ from src.train.generate.vae.train_beta_vae import train_beta_vae
 from src.train.logging.training_logger_utils import log_exception
 from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.setup import load_config, build_dirs, init_observers, save_config
+import pprint
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 try:
     from rich.console import Console
     from rich.panel import Panel
@@ -44,6 +52,7 @@ def parse_args():
             "vanilla", # 👈
             "composable_vanilla", # 👈
             "ldm", # 👈
+            "vpsde", # 👈
             "composable_ldm", # 👈
             "vae", # 👈
             "beta_vae", # 👈
@@ -81,9 +90,10 @@ def display_dry_run_summary(args, cfg, base_dir):
     Displays a rich summary of the configuration for a dry run.
     """
     if not RICH_AVAILABLE:
-        print("Rich library not installed. Please install it with 'pip install rich' for a better dry-run output.")
-        print("--- Arguments ---")
-        print(vars(args))
+        print("Rich library not installed. Run 'pip install rich' for a better dry-run experience.")
+        print("\n--- Arguments ---")
+        import json
+        print(json.dumps(vars(args), indent=2))
         print("\n--- Configuration ---")
         print(cfg)
         return
@@ -92,22 +102,20 @@ def display_dry_run_summary(args, cfg, base_dir):
     console.print(Panel(Text("🚀 Experiment Dry Run Summary", justify="center", style="bold cyan"),
                         border_style="cyan"))
 
-    # --- Arguments Table ---
+    # --- Arguments and Paths Tables (Corrected) ---
     arg_table = Table(title="CLI Arguments", show_header=True, header_style="bold magenta", expand=True)
-    arg_table.add_column("Argument", style="dim", width=25, no_wrap=True)
-    arg_table.add_column("Value", style="bold")
-
+    arg_table.add_column("Argument", style="dim", no_wrap=True, ratio=1)
+    arg_table.add_column("Value", style="bold", overflow="fold", ratio=3)
     arg_dict = vars(args)
     for arg, value in arg_dict.items():
         if value is not None and value is not False:
             arg_table.add_row(f"--{arg}", str(value))
-
     console.print(arg_table)
 
     # --- Derived Paths ---
     path_table = Table(title="Derived Paths", show_header=True, header_style="bold green", expand=True)
-    path_table.add_column("Path Type", style="dim", width=25, no_wrap=True)
-    path_table.add_column("Full Path")
+    path_table.add_column("Path Type", style="dim", no_wrap=True, ratio=1)
+    path_table.add_column("Full Path", overflow="fold", ratio=3)
 
     dirs = build_dirs(cfg, base_dir=base_dir, gen_modeL=args.gen_model)
     for name, path in dirs.items():
@@ -115,11 +123,19 @@ def display_dry_run_summary(args, cfg, base_dir):
 
     console.print(path_table)
 
-    # --- Full Configuration ---
-    config_str = str(cfg)
-    syntax = Syntax(config_str, "yaml", theme="one-dark", line_numbers=True)
-    console.print(Panel(syntax, title="[bold yellow]Merged Configuration[/bold yellow]", border_style="yellow"))
+    # --- Full Configuration Panel ---
+    config_str = ""
+    # Use OmegaConf's to_yaml() if available, as it's likely the config object type.
+    if "omegaconf" in str(type(cfg)):
+        from omegaconf import OmegaConf
+        config_str = OmegaConf.to_yaml(cfg)
+    else:
+        # Fallback to pretty printing if not an OmegaConf object
+        import pprint
+        config_str = pprint.pformat(cfg)
 
+    syntax = Syntax(config_str, "yaml", theme="monokai", line_numbers=True)
+    console.print(Panel(syntax, title="[bold yellow]Full Merged Configuration[/bold yellow]", border_style="yellow"))
     console.print("[bold green]✅ Config verified. No job was submitted.[/bold green]")
 
 if __name__ == "__main__":
@@ -211,6 +227,12 @@ if __name__ == "__main__":
                 ema = EMA(model, decay=cfg.diffusion.ema_decay)
                 from src.train.generate.simple_diffusion.composable_train import train as composable_train
                 composable_train(cfg, dirs, model, ema, train_loader, logger, device, writer, wandb_run)
+            elif args.gen_model == "vpsde":
+                model_params = dict(cfg.model.vpsde.architecture)  # copy so we don't modify original config
+                model = GENERATION_MODEL_REGISTRY["vpsde"]["scoreModel"](**model_params).to(device)
+                from src.train.generate.vpsde.vpsde_train import train as vpsde_train
+                sde = VPSDE(num_timesteps=cfg.diffusion.timesteps, device=device)
+                vpsde_train(cfg, dirs, model, sde,  train_loader, val_loader, logger, device, writer=writer, wandb_run=wandb_run)
             elif args.gen_model == "vae":
                 model_params = dict(cfg.model.vae.architecture)  # copy so we don't modify original config
                 model = GENERATION_MODEL_REGISTRY["vae"]["vae"](**model_params).to(device)

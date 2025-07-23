@@ -7,7 +7,7 @@ from box import Box
 
 from src.config.configs import Config
 from src.models.edm.EDM import EDMNoiseSchedule, edm_loss, edm_sampler
-from src.models.vpsde.ScoreSdeUNet import VPSDE, dsm_loss, pc_sampler
+from src.models.vpsde.ColoredMNISTScoreModel import VPSDE, dsm_loss, pc_sampler
 from src.models.vanilla.ema import EMA
 from src.models.vanilla.unet import Unet
 from src.monitoring.email_alert_mailtrap import alert_on_success

@@ -1,41 +1,33 @@
 from pathlib import Path
 from typing import Dict
-
-import torch
 import torch.nn.functional as F
+import torch
 from box import Box
-
-from src.config.configs import Config
-from src.models.vpsde.ScoreSdeUNet import VPSDE, dsm_loss, pc_sampler, ScoreSdeUNet
-from src.models.vanilla.ema import EMA
-from src.models.vanilla.unet import Unet
+from src.models.vpsde.ColoredMNISTScoreModel import ColoredMNISTScoreModel, VPSDE
 from src.monitoring.email_alert_mailtrap import alert_on_success
 from src.train.logging.training_logger_utils import log_training_start, log_epoch_start, log_batch, log_epoch_summary, \
     visualize_epoch, log_json, log_training_end
-from src.models.vanilla.diffusion import generate_batch
-from src.utils.calculations import q_sample
 from src.utils.checkpoint_manager import CheckpointManager
 from datetime import timedelta
 import time
 from torch.optim import Adam
-from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
+
+from src.utils.sampling import ScoreModelSampler
+
 
 def train(cfg: Box,
           dirs: Dict,
-          model: ScoreSdeUNet,
-          ema: EMA,
+          model: ColoredMNISTScoreModel,
+          sde: VPSDE,
           train_loader: DataLoader,
+          val_loader: DataLoader,
           logger,
           device,
           writer=None,
           wandb_run=None):
 
-    # optimiser / scaler identical to DDPM script
     optimizer = Adam(model.parameters(), **cfg.optimizer.params)
-    scaler    = GradScaler()
-    sde       = model.sde
-
     start_time = time.time()
     log_training_start(
         logger,
@@ -52,7 +44,7 @@ def train(cfg: Box,
                                    logger=logger)
     global_step = 0
     start_epoch = 1
-
+    sampler = ScoreModelSampler(sde=sde)
     if cfg.training.resume_from:
         try:
             model, optimizer, _, last_epoch, global_step = ckpt_mgr.load_latest(
@@ -62,7 +54,6 @@ def train(cfg: Box,
             logger.info(f"Resuming from epoch {last_epoch}")
         except Exception as e:
             logger.warning(f"Could not resume training: {e}")
-
     try:
         for epoch in range(start_epoch, cfg.training.epochs + 1):
             epoch_start = time.time()
@@ -70,18 +61,22 @@ def train(cfg: Box,
             running_loss = 0.0
 
             for step, batch_dict in enumerate(train_loader, 1):
+                optimizer.zero_grad()
                 x0   = batch_dict["image"].to(device)
-                B    = x0.size(0)
-                t    = torch.rand(B, device=device) * (1. - 1e-5)  # U(0,1)
-
-                optimizer.zero_grad(set_to_none=True)
-
-                loss = dsm_loss(model, x0, t, sde)      # <── the only change
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-
-                ema.update()
+                t = torch.randint(0, sde.num_timesteps, (x0.shape[0],), device=device)
+                noise = torch.randn_like(x0)
+                sqrt_alpha_bar_t = sde.sqrt_alphas_cumprod[t].view(-1, 1, 1, 1)
+                sqrt_one_minus_alpha_bar_t = sde.sqrt_one_minus_alphas_cumprod[t].view(-1, 1, 1, 1)
+                xt = sqrt_alpha_bar_t * x0 + sqrt_one_minus_alpha_bar_t * noise
+                predicted_noise = model(xt, t.float())
+                if cfg.diffusion.loss_type == 'l1':
+                    loss = F.l1_loss(noise, predicted_noise)
+                elif cfg.diffusion.loss_type == 'l2':
+                    loss = F.mse_loss(noise, predicted_noise)
+                elif cfg.diffusion.loss_type == "huber":
+                    loss = F.smooth_l1_loss(noise, predicted_noise)
+                loss.backward()
+                optimizer.step()
                 running_loss += loss.item()
                 global_step += 1
 
@@ -100,19 +95,15 @@ def train(cfg: Box,
             log_json(logger, "Epoch Summary",
                      epoch=epoch, train_loss=avg_loss, duration=epoch_dur)
 
-            # ── sampling preview (uses EMA weights) ──────────────
-            real_batch = x0[:cfg.sampling.batch_size].to(device)
-            ema.apply_shadow()
-            sample = pc_sampler(model, sde,
-                                shape=(cfg.sampling.batch_size,
-                                       cfg.dataset.channels,
-                                       cfg.dataset.image_size,
-                                       cfg.dataset.image_size))
-            ema.restore()
-
             if epoch % cfg.training.log_every_epoch == 0:
-                visualize_epoch(sample, real_batch, dirs,
-                                epoch=epoch, wandb_run=wandb_run, writer=writer)
+                model.eval()
+                real_batch = next(iter(val_loader))
+                real_batch = real_batch['image'][:cfg.sampling.batch_size].to(device)
+
+                generated = sampler.sample(model, real_batch.shape, cfg.diffusion.timesteps, device=device)
+                prefix = f"{cfg.experiment_id}_run_{cfg.run_id}_sample_epoch_{epoch}"
+                visualize_epoch(generated, real_batch, dirs, epoch=epoch, prefix=prefix, wandb_run=wandb_run,
+                                writer=writer)
             if cfg.training.save_every_epoch and epoch % cfg.training.save_every_epoch == 0:
                 ckpt_mgr.save(model, optimizer, None, epoch, global_step)
             if device.type == "cuda":

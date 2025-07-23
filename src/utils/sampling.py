@@ -1,10 +1,11 @@
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-
+import torch.nn as nn
 from src.models.composable_diffusion import ComposableDiffusionModel
 from src.models.ldm.autoencoder import AutoencoderKL
 from src.models.vanilla.composable_unet import ComposableUnet
+from src.models.vpsde.ColoredMNISTScoreModel import ColoredMNISTScoreModel, VPSDE
 
 
 def get_diffusion_constants(cfg, device):
@@ -367,6 +368,41 @@ def ddpm_sampler(model, cfg, device, conds=None):
             img = model_mean + torch.sqrt(posterior_variance_t) * noise
 
     return img
+
+
+class ScoreModelSampler:
+    def __init__(self, sde: VPSDE):
+        self.sde = sde
+
+    @torch.no_grad()
+    def sample(self, model: nn.Module, shape: tuple, num_steps: int = 1000, device='cpu'):
+        x = torch.randn(shape, device=device)
+
+        # Iterate backwards from the last timestep to the first
+        for i in tqdm(reversed(range(num_steps)), desc="Sampling from model", total=num_steps, leave=False):
+            t = torch.full((shape[0],), i, device=device, dtype=torch.long)
+
+            # Predict the noise from the current noisy image
+            predicted_noise = model(x, t.float())
+
+            # Use the DDPM p_sample equation to denoise for one step
+            beta_t = self.sde.betas[t].view(-1, 1, 1, 1)
+            sqrt_one_minus_alpha_bar_t = self.sde.sqrt_one_minus_alphas_cumprod[t].view(-1, 1, 1, 1)
+            alpha_t = self.sde.alphas[t].view(-1, 1, 1, 1)
+
+            # Calculate the mean of the posterior distribution
+            model_mean = (1 / torch.sqrt(alpha_t)) * (x - beta_t * predicted_noise / sqrt_one_minus_alpha_bar_t)
+
+            if i == 0:
+                # At the last step, the image is the mean
+                x = model_mean
+            else:
+                # Add noise back in, scaled by the posterior variance
+                posterior_variance_t = self.sde.posterior_variance[t].view(-1, 1, 1, 1)
+                noise = torch.randn_like(x)
+                x = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+        return x
 
 
 @torch.no_grad()

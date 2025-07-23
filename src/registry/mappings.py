@@ -13,7 +13,7 @@ from src.models.slot_diffusion.SlotDiffusionUNet import SlotDiffusionUNet
 from src.models.vae.disentangled_vae import DisentangledVAE
 from src.models.vanilla.composable_unet import ComposableUnet
 from src.models.vanilla.unet import Unet
-from src.models.vpsde.ScoreSdeUNet import ScoreSdeUNet
+from src.models.vpsde.ColoredMNISTScoreModel import ColoredMNISTScoreModel
 
 COLOR_MAP = {
     0: (255, 0, 0),     # Red
@@ -63,14 +63,14 @@ GENERATION_MODEL_REGISTRY = {
     "ldm": {
         "unet": Unet,
     },
+    "vpsde": {
+        "scoreModel": ColoredMNISTScoreModel,
+    },
     "composable_ldm": {
         "unet": ComposableUnet,
     },
     "slot": {
         "unet": SlotDiffusionUNet,
-    },
-    "vpsde": {
-        "unet": ScoreSdeUNet
     },
     "edm":{
         "unet": EDMUNet
