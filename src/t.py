@@ -22,6 +22,10 @@ class VPSDE:
         self.betas = torch.linspace(beta_min, beta_max, num_timesteps, device=device)
         self.alphas = 1. - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0], device=device), self.alphas_cumprod[:-1]])
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
+        self.posterior_variance = self.betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
     # The reverse SDE requires f(x,t) and g(t)
     def f(self, x, t): return -0.5 * self.betas[t].view(-1, 1, 1, 1) * x
