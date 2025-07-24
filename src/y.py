@@ -397,9 +397,9 @@ if __name__ == '__main__':
     model_B_name = f"model_B_{cfg.exp_name}"
 
     # --- Training Phase ---
-    if cfg.training.do_train:
-        train(cfg, model_A, sde, loader_A, device, model_A_name, ckpt_mgr)
-        train(cfg, model_B, sde, loader_B, device, model_B_name, ckpt_mgr)
+    # if cfg.training.do_train:
+    #     train(cfg, model_A, sde, loader_A, device, model_A_name, ckpt_mgr)
+    #     train(cfg, model_B, sde, loader_B, device, model_B_name, ckpt_mgr)
 
     # --- Inference and Composition Phase ---
     print("\n--- Starting Inference Phase ---")
