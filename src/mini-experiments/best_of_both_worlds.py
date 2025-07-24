@@ -154,8 +154,8 @@ class LatentDiffusionMLP(nn.Module):
 betas = torch.linspace(0.0001, 0.02, Config.TIMESTEPS)
 alphas = 1. - betas
 alphas_cumprod = torch.cumprod(alphas, axis=0)
-sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
-sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod).to(Config.DEVICE)
+sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod).to(Config.DEVICE)
 
 
 def q_sample_latent(z_start, t, noise=None):
