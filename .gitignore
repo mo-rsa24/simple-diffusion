@@ -4,7 +4,9 @@ data/
 .vscode/
 __pycache__/
 simple-diffusion/
+src/mini-experiments/visualizations/
 *.pyo
+*.pth
 *.pyd
 *.db
 *.sqlite3
