@@ -19,8 +19,8 @@ class Config:
     BATCH_SIZE = 128
     PREFIX = "samples"
     TIMESTEPS = 500
-    NUM_EPOCHS = 50  # Increase for better results
-    LR = 1e-3
+    NUM_EPOCHS = 200  # Increase for better results
+    LR = 1e-4
     SHAPES = ["circle", "square", "triangle"]
     COLORS = ["red", "green", "blue"]
     # Hold out a combination to test for true compositionality
@@ -175,6 +175,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
         return embeddings
 
 
+# In the Block class
 class Block(nn.Module):
     """A basic convolutional block with GroupNorm."""
 
@@ -187,25 +188,27 @@ class Block(nn.Module):
         else:
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
             self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
+
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_ch)
-        self.bn2 = nn.BatchNorm2d(out_ch)
+        # --- MODIFICATION: Replace BatchNorm2d with GroupNorm ---
+        self.gn1 = nn.GroupNorm(8, out_ch)  # 8 groups is a common choice
+        self.gn2 = nn.GroupNorm(8, out_ch)
         self.relu = nn.ReLU()
 
-    def forward(self, x, t):
+    def forward(self, x, t_emb):  # Now we expect the embedding directly
         # First Conv
-        h = self.bn1(self.relu(self.conv1(x)))
-        # Time embedding
-        time_emb = self.relu(self.time_mlp(t))
-        # Extend last 2 dimensions
-        time_emb = time_emb[(...,) + (None,) * 2]
-        # Add time channel
+        h = self.gn1(self.relu(self.conv1(x)))
+
+        # --- MODIFICATION: Project and add time/label embedding ---
+        time_emb = self.relu(self.time_mlp(t_emb))
+        time_emb = time_emb[(...,) + (None,) * 2]  # Reshape for broadcasting
         h = h + time_emb
+
         # Second Conv
-        h = self.bn2(self.relu(self.conv2(h)))
+        h = self.gn2(self.relu(self.conv2(h)))
+
         # Down or Upsample
         return self.transform(h)
-
 
 class SimpleUnet(nn.Module):
     """A simplified U-Net for denoising."""
@@ -242,26 +245,29 @@ class SimpleUnet(nn.Module):
 
         self.output = nn.Conv2d(up_channels[-1], out_dim, 1)
 
+    # In the SimpleUnet forward pass
     def forward(self, x, timestep, y):
         # Embedd time
-        t = self.time_mlp(timestep)
+        t_emb = self.time_mlp(timestep)
         # Embedd label
         y_emb = self.label_emb(y)
         # Combine embeddings
-        t = t + y_emb
+        combined_emb = t_emb + y_emb
 
         # Initial conv
         x = self.conv0(x)
         # Unet
         residual_inputs = []
         for down in self.downs:
-            x = down(x, t)
+            # --- MODIFICATION: Pass the combined embedding to each block ---
+            x = down(x, combined_emb)
             residual_inputs.append(x)
         for up in self.ups:
             residual_x = residual_inputs.pop()
             # Add residual x as additional channels
             x = torch.cat((x, residual_x), dim=1)
-            x = up(x, t)
+            # --- MODIFICATION: Pass the combined embedding to each block ---
+            x = up(x, combined_emb)
         return self.output(x)
 
 

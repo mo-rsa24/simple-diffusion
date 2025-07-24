@@ -7,8 +7,7 @@ import torchvision
 from box import Box
 import math
 from pathlib import Path
-import time
-from datetime import timedelta
+from torchvision.utils import save_image, make_grid
 from tqdm.auto import tqdm
 import numpy as np
 
@@ -142,7 +141,7 @@ class ColoredMNIST(Dataset):
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
         ])
-        self.mnist_dataset = datasets.MNIST(root='./data', train=True, download=True)
+        self.mnist_dataset = datasets.MNIST(root='../../data', train=True, download=True)
         self.target_digits = target_digits
         if self.target_digits:
             self.indices = [i for i, (_, label) in enumerate(self.mnist_dataset) if label in self.target_digits]
@@ -213,7 +212,7 @@ class CheckpointManager:
         return model
 
 
-def train(cfg, model, sde, train_loader, device, model_name, ckpt_mgr):
+def train(cfg, model, vpsde_sampler, sde, train_loader, device, model_name, ckpt_mgr):
     """Simplified training loop."""
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.optimizer.params.lr)
     print(f"--- Starting Training for {model_name} ---")
@@ -232,7 +231,17 @@ def train(cfg, model, sde, train_loader, device, model_name, ckpt_mgr):
             loss = F.mse_loss(noise, predicted_noise)
             loss.backward();
             optimizer.step()
-
+        if epoch % cfg.training.epochs == 0:
+            model.eval()
+            shape = (cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size)
+            generated_image = vpsde_sampler.sample_single_model(model, cfg.sampling.batch_size, shape, device)
+            OUTPUT_DIR = f"visualizations/{cfg.exp_name}/composing_colored_mnist"
+            samples_dir: Path = Path(OUTPUT_DIR) / model_name / f"epoch_{epoch}"
+            samples_dir.mkdir(parents=True, exist_ok=True)
+            for(i, img) in enumerate(generated_image[:4]):
+                img = img.detach().cpu().clamp(-1, 1)
+                img = (img + 1) / 2  # map [-1,1] -> [0,1]
+                save_image(img, samples_dir / Path(f"{cfg.PREFIX}_{i:03d}.png"), normalize=False)
     print(f"--- Finished Training for {model_name} ---")
     ckpt_mgr.save(model, model_name)
 
@@ -357,7 +366,7 @@ if __name__ == '__main__':
     dirs['viz'].mkdir(exist_ok=True)
     ckpt_mgr = CheckpointManager(checkpoint_dir=dirs['ckpt'])
     sde = VPSDE(device=device)
-
+    vpsde_sampler = SuperDiffSampler(sde)
     # --- Experiment-Specific Configurations ---
     if EXPERIMENT_TO_RUN.upper() == 'CIFAR10':
         cfg = Box({
@@ -377,8 +386,9 @@ if __name__ == '__main__':
         cfg = Box({
             "exp_name": "mnist_colored",
             "dataset": {"image_size": 32, "channels": 3, "split_A_digit": [6], "split_B_digit": [2]},
+            "PREFIX": "samples",
             # Red 6s and Green 2s
-            "training": {"do_train": True, "epochs": 5, "batch_size": 128}, "optimizer": {"params": {"lr": 2e-4}},
+            "training": {"do_train": True, "epochs": 1, "batch_size": 128}, "optimizer": {"params": {"lr": 2e-4}},
             "sampling": {"batch_size": 8, "temp": 1.0}
         })
         print("--- RUNNING COLORED MNIST EXPERIMENT ---")
@@ -393,13 +403,13 @@ if __name__ == '__main__':
     # --- Model Initialization ---
     model_A = ColoredMNISTScoreModel(in_channels=cfg.dataset.channels).to(device)
     model_B = ColoredMNISTScoreModel(in_channels=cfg.dataset.channels).to(device)
-    model_A_name = f"model_A_{cfg.exp_name}"
-    model_B_name = f"model_B_{cfg.exp_name}"
+    model_A_name = f"digit_6_model_A_{cfg.exp_name}"
+    model_B_name = f"digit_2_model_B_{cfg.exp_name}"
 
     # --- Training Phase ---
-    # if cfg.training.do_train:
-    #     train(cfg, model_A, sde, loader_A, device, model_A_name, ckpt_mgr)
-    #     train(cfg, model_B, sde, loader_B, device, model_B_name, ckpt_mgr)
+    if cfg.training.do_train:
+        train(cfg, model_A, vpsde_sampler, sde, loader_A, device, model_A_name, ckpt_mgr)
+        train(cfg, model_B, vpsde_sampler, sde, loader_B, device, model_B_name, ckpt_mgr)
 
     # --- Inference and Composition Phase ---
     print("\n--- Starting Inference Phase ---")
@@ -410,7 +420,6 @@ if __name__ == '__main__':
         print(f"Error: {e}. Please train the models first by setting `do_train=True`.")
         exit()
 
-    vpsde_sampler = SuperDiffSampler(sde)
     shape = (cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size)
 
     samples_A = vpsde_sampler.sample_single_model(model_A, cfg.sampling.batch_size, shape, device)
