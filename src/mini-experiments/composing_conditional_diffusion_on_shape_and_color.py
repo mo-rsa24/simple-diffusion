@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import Compose, ToTensor, Lambda, ToPILImage, CenterCrop, Resize
 from torchvision.utils import save_image, make_grid
 from PIL import Image, ImageDraw
-import numpy as np
+from pathlib import Path
 from tqdm import tqdm
 import math
 import os
@@ -14,16 +14,18 @@ import os
 # --- Configuration ---
 class Config:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    EXP_NAME =  "shape_and_color"
     IMG_SIZE = 64
     BATCH_SIZE = 128
-    TIMESTEPS = 300
-    NUM_EPOCHS = 40  # Increase for better results
+    PREFIX = "samples"
+    TIMESTEPS = 500
+    NUM_EPOCHS = 50  # Increase for better results
     LR = 1e-3
     SHAPES = ["circle", "square", "triangle"]
     COLORS = ["red", "green", "blue"]
     # Hold out a combination to test for true compositionality
     HOLDOUT_COMBINATION = ("triangle", "blue")
-    OUTPUT_DIR = "composable_diffusion_output"
+    OUTPUT_DIR = f"visualizations/{EXP_NAME}/composable_diffusion_output"
 
 
 # Create output directory
@@ -265,7 +267,7 @@ class SimpleUnet(nn.Module):
 
 # --- 4. Training ---
 
-def train_model(model, dataloader, optimizer, num_epochs, condition_type):
+def train_model(model, dataloader, optimizer, num_epochs, condition_type, debug: bool = False):
     """Trains one of the specialist models."""
     print(f"--- Training {condition_type.upper()} model ---")
     for epoch in range(num_epochs):
@@ -275,7 +277,10 @@ def train_model(model, dataloader, optimizer, num_epochs, condition_type):
 
             batch_size = images.shape[0]
             images = images.to(Config.DEVICE)
-
+            if debug:
+                if step % dataloader.dataset.__len__():
+                    from src.utils.visualization import visualize_images
+                    visualize_images(images, denormalize=False)
             # Select the correct label for conditioning
             if condition_type == 'shape':
                 labels = shape_labels.to(Config.DEVICE)
@@ -288,36 +293,49 @@ def train_model(model, dataloader, optimizer, num_epochs, condition_type):
             loss = p_losses(model, images, t, labels, loss_type="l1")
             loss.backward()
             optimizer.step()
-
+        if epoch % Config.NUM_EPOCHS == 0:
+            model.eval()
+            generated_image = sample_image(model, labels)
+            samples_dir: Path = Path(Config.OUTPUT_DIR) / condition_type / f"epoch_{epoch}"
+            samples_dir.mkdir(parents=True, exist_ok=True)
+            for(i, img) in enumerate(generated_image[:4]):
+                img = img.detach().cpu().clamp(-1, 1)
+                img = (img + 1) / 2  # map [-1,1] -> [0,1]
+                save_image(img, samples_dir / Path(f"{Config.PREFIX}_{i:03d}.png"), normalize=False)
             progress_bar.set_postfix(loss=loss.item())
     print(f"--- Finished training {condition_type.upper()} model ---")
 
 
 # --- 5. Sampling / Inference ---
-
 @torch.no_grad()
-def p_sample(model, x, t, y):
-    """Denoise a single step."""
-    betas_t = extract(betas, t, x.shape)
-    sqrt_one_minus_alphas_cumprod_t = extract(
-        sqrt_one_minus_alphas_cumprod, t, x.shape
-    )
-    sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
+def sample_image(model: SimpleUnet, labels):
+    """Sample using the composed scores of the two models."""
+    print(f"Sampling Diffusion")
 
-    # Equation 11 in the DDPM paper
-    # Use our model (noise predictor) to predict the mean
-    model_mean = sqrt_recip_alphas_t * (
-            x - betas_t * model(x, t, y) / sqrt_one_minus_alphas_cumprod_t
-    )
+    # Start from pure noise
+    img_size = Config.IMG_SIZE
+    img = torch.randn((1, 3, img_size, img_size), device=Config.DEVICE)
 
-    if t[0].item() == 0:
-        return model_mean
-    else:
-        posterior_variance_t = extract(posterior_variance, t, x.shape)
-        noise = torch.randn_like(x)
-        # Algorithm 2 line 4:
-        return model_mean + torch.sqrt(posterior_variance_t) * noise
+    for i in tqdm(reversed(range(0, Config.TIMESTEPS)), desc="Diffusion Sampling", total=Config.TIMESTEPS):
+        t = torch.full((1,), i, device=Config.DEVICE, dtype=torch.long)
+        predicted_noise = model(img, t, labels)
 
+        alpha_t = alphas[i]
+        alpha_cumprod_t = alphas_cumprod[i]
+
+        coeff_img = 1.0 / torch.sqrt(alpha_t)
+        coeff_pred_noise = (1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)
+
+        model_mean = coeff_img * (img - coeff_pred_noise * predicted_noise)
+
+        if i == 0:
+            img = model_mean
+        else:
+            posterior_variance_t = extract(posterior_variance, t, img.shape)
+            noise = torch.randn_like(img)
+            img = model_mean + torch.sqrt(posterior_variance_t) * noise
+
+    return img
 
 @torch.no_grad()
 def sample_composed(shape_model, color_model, shape_idx, color_idx, w_shape=1.0, w_color=1.0):
