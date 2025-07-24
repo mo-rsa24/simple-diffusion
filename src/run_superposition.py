@@ -3,12 +3,13 @@ import os
 from pathlib import Path
 import torch
 from src.models.composable_diffusion.ComposableExpertUnet import ComposableExpertUnet
+from src.models.vpsde.ColoredMNISTScoreModel import VPSDE
 from src.monitoring.alert_notifier import send_failure_email
 from src.registry.mappings import DATASET_LOADERS, GENERATION_MODEL_REGISTRY
 from torch.optim import Adam
-from src.train.logging.training_logger_utils import log_exception, generate_and_save_grid
+from src.train.logging.training_logger_utils import log_exception, generate_and_save_grid, visualize_epoch
 from src.utils.checkpoint_manager import CheckpointManager
-from src.utils.sampling import ito_sampler, composable_unet_sampler
+from src.utils.sampling import ito_sampler, composable_unet_sampler, VpsdeItoSampler, SuperDiffSampler
 from src.utils.setup import load_config, build_dirs, init_observers, save_config
 
 
@@ -138,35 +139,53 @@ if __name__ == "__main__":
                 model_params = dict(
                     cfg.model.composable_vanilla.architecture)  # copy so we don't modify original config
                 models.append(GENERATION_MODEL_REGISTRY["composable_vanilla"]["unet"](**model_params).to(device))
+            elif args.gen_model == "vpsde":
+                model_params = dict(cfg.model.vpsde.architecture)  # copy so we don't modify original config
+                models.append(GENERATION_MODEL_REGISTRY["vpsde"]["scoreModel"](**model_params).to(device))
 
-        digit_5_model_optimizer, digit_2_model_optimizer = None, None
-        if cfg.optimizer.type.lower() == "adam":
-            digit_5_model_optimizer = Adam(models[0].parameters(), **cfg.optimizer.params)
-            digit_2_model_optimizer = Adam(models[1].parameters(), **cfg.optimizer.params)
+        model_optimizers = [Adam(m.parameters(), **cfg.optimizer.params) for m in models]
 
         try:
-            digit_5_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)),  logger=logger)
-            digit_5_model, digit_5_model_optimizer, scheduler, last_epoch, global_step = digit_5_checkpoint_manager.load_latest(models[0], digit_5_model_optimizer, scheduler, map_location=device)
+            ckpt_mgr_6 = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)),  logger=logger)
+            models[0], model_optimizers[0], _, _, _ = ckpt_mgr_6.load_latest(models[0], model_optimizers[0], scheduler, map_location=device)
         except Exception as e:
             logger.warning(f"Could not resume training: {e}")
 
         try:
-            digit_2_path = Path(dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)).__str__().replace('color_mnist_digit_5', 'color_mnist_digit_2'))
-            digit_2_checkpoint_manager = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=digit_2_path, logger=logger)
-            digit_2_model, digit_2_model_optimizer, scheduler, last_epoch, global_step = digit_2_checkpoint_manager.load_latest(models[1], digit_2_model_optimizer, scheduler, map_location=device)
+            path_2 = Path(dirs.get("ckpt",Path(cfg.dirs.ckpt_dir)).__str__().replace('luke_mnist_color_green_digit_6', 'luke_mnist_color_red_digit_2'))
+            ckpt_mgr_2 = CheckpointManager(run_id=cfg.run_id, checkpoint_dir=path_2, logger=logger)
+            models[1], model_optimizers[1], _, _, _ = ckpt_mgr_2.load_latest(models[1], model_optimizers[1], scheduler,
+                                                                             map_location=device)
         except Exception as e:
             logger.warning(f"Could not resume training: {e}")
 
         """
         # Check To See Checkpoints were saved and loaded appropriately 
-        
-        from src.utils.sampling import ddpm_sampler
-        from src.utils.visualization import visualize_images
-        digit_5 = ddpm_sampler(models[0], cfg, device)
-        digit_2 = ddpm_sampler(models[1], cfg, device)
-        visualize_images(digit_5)
-        visualize_images(digit_2)
         """
+        # from src.utils.sampling import ddpm_sampler
+        # from src.utils.visualization import visualize_images
+        # digit_6 = ddpm_sampler(models[0], cfg, device)
+        # digit_2 = ddpm_sampler(models[1], cfg, device)
+        # visualize_images(digit_6)
+        # visualize_images(digit_2)
+
+
+        # # Check to see VPSDE checkpoints
+        # from src.utils.visualization import visualize_images
+        # from src.utils.sampling import ScoreModelSampler
+        # sde = VPSDE(
+        #     beta_min=cfg.diffusion.beta_start,
+        #     beta_max=cfg.diffusion.beta_end,
+        #     num_timesteps=cfg.diffusion.timesteps,
+        #     device=device
+        # )
+        # vpsde_sampler = VpsdeItoSampler(sde=sde)
+        # batch_shape = (cfg.sampling.batch_size, cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size)
+        # sampler = ScoreModelSampler(sde=sde)
+        # digit_5 = sampler.sample(models[0], batch_shape, cfg.diffusion.timesteps, device=device)
+        # digit_2 = sampler.sample(models[1], batch_shape, cfg.diffusion.timesteps, device=device)
+        # from src.train.logging.training_logger_utils import visualize_epoch
+        # visualize_epoch(digit_2, digit_5, dirs, epoch=1)
         # Load multiple checkpoints
         logger.info(f"Successfully loaded models.")
         # === Prepare for Composition ===
@@ -196,17 +215,30 @@ if __name__ == "__main__":
         }
 
         if args.compose_model == 'ito':
-            weights = [0.4, 0.6]
+            weights = [0.5, 0.5]
             logger.info(f"Using ito_sampler with weights: {weights}")
-            composed_samples = ito_sampler(
-                models,
-                torch.Size((4,3, 32,32)),
-                cfg.diffusion.timesteps,
-                cfg.diffusion.beta_start,
-                cfg.diffusion.beta_end,
-                weights=weights,
+
+            # --- Updated Sampler Logic ---
+            sde = VPSDE(num_timesteps=cfg.diffusion.timesteps, device=device)
+            vpsde_sampler = SuperDiffSampler(sde=sde)
+            and_samples = vpsde_sampler.sample(
+                model1=models[0],
+                model2=models[1],
+                batch_size=4,
+                shape=(cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size),
                 device=device,
+                operation='AND'
             )
+            or_samples = vpsde_sampler.sample(
+                model1=models[0],
+                model2=models[1],
+                batch_size=4,
+                shape=(cfg.dataset.channels, cfg.dataset.image_size, cfg.dataset.image_size),
+                device=device,
+                operation='OR'
+            )
+            visualize_epoch(and_samples, or_samples, dirs, epoch=0)
+            exit(0)
         elif args.compose_model == 'composable_unet':
             logger.info("Using composable_unet_sampler")
             # composed_samples = composable_unet_sampler(
@@ -228,14 +260,14 @@ if __name__ == "__main__":
 
         # === Visualization ===
         logger.info("Generating and saving visualization grid...")
-        generate_and_save_grid(
-            individual_models=models,
-            composed_samples=composed_samples,
-            compose_model_name=args.compose_model,
-            sampling_params=sampling_params,
-            save_path=dirs.get("results_samples")
-        )
-        logger.info(f"Visualization grid saved in {logger.get_image_dir()}")
+        # generate_and_save_grid(
+        #     individual_models=models,
+        #     composed_samples=composed_samples,
+        #     compose_model_name=args.compose_model,
+        #     sampling_params=sampling_params,
+        #     save_path=dirs.get("results_samples")
+        # )
+        # logger.info(f"Visualization grid saved in {logger.get_image_dir()}")
 
     except Exception as e:
         log_exception(logger, exception=e)
