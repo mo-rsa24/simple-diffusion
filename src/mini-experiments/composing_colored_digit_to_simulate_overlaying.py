@@ -284,7 +284,7 @@ if __name__ == '__main__':
             "model_A_digit": [6], "model_A_color": (1.0, 0.0, 0.0),  # Red 6
             "model_B_digit": [2], "model_B_color": (0.0, 0.8, 0.0),  # Green 2
         },
-        "training": {"do_train": True, "epochs": 100, "batch_size": 128},
+        "training": {"do_train": True, "epochs": 1, "batch_size": 128},
         "optimizer": {"params": {"lr": 2e-4}},
         "sampling": {"batch_size": 4}
     })
@@ -346,7 +346,7 @@ if __name__ == '__main__':
 
 
     # Also visualize the masks themselves to understand the layout
-    mask_viz = torch.stack([mask_B, mask_A]).unsqueeze(1).repeat(1, 3, 1, 1).float()
+    mask_viz = torch.stack([mask_B, mask_A]).unsqueeze(1).repeat(1, 3, 1, 1).float().to(device)
 
     output_path = dirs['viz'] / f"experiment_{cfg.exp_name}_results.png"
     torchvision.utils.save_image(
