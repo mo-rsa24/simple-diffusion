@@ -168,7 +168,7 @@ def q_sample_latent(z_start, t, noise=None):
 def train_latent_diffusion(model, dataloader, optimizer, num_epochs, condition_type):
     print(f"--- Training Latent Diffusion Expert: {condition_type.upper()} ---")
     for epoch in range(num_epochs):
-        progress_bar = tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False)
+        progress_bar = tqdm(dataloa1der, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False)
         for z, digits, colors in progress_bar:
             optimizer.zero_grad()
             z = z.to(Config.DEVICE)

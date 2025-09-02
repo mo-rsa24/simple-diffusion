@@ -299,6 +299,7 @@ def train_model(model, dataloader, optimizer, num_epochs, condition_type, debug:
             loss = p_losses(model, images, t, labels, loss_type="l1")
             loss.backward()
             optimizer.step()
+            progress_bar.set_postfix(loss=loss.item())
         if epoch % Config.NUM_EPOCHS == 0:
             model.eval()
             generated_image = sample_image(model, labels)
@@ -308,7 +309,6 @@ def train_model(model, dataloader, optimizer, num_epochs, condition_type, debug:
                 img = img.detach().cpu().clamp(-1, 1)
                 img = (img + 1) / 2  # map [-1,1] -> [0,1]
                 save_image(img, samples_dir / Path(f"{Config.PREFIX}_{i:03d}.png"), normalize=False)
-            progress_bar.set_postfix(loss=loss.item())
     print(f"--- Finished training {condition_type.upper()} model ---")
 
 

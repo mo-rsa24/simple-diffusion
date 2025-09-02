@@ -129,7 +129,7 @@ class GrayscaleMNIST(Dataset):
 
     def __init__(self, image_size, target_digits):
         self.transform = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor()])
-        mnist = datasets.MNIST(root='./data', train=True, download=True)
+        mnist = datasets.MNIST(root='../../data', train=True, download=True)
         self.indices = [i for i, (_, label) in enumerate(mnist) if label in target_digits]
         self.mnist_dataset = mnist
 
